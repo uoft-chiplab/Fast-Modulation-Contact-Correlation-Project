@@ -46,7 +46,7 @@ t = t + np.round(shift, decimals=-1)/1000
 # frequencies
 # x = np.array([43.34, 43.32, 43.3,43.285, 43.27, 43.26, 43.25, 43.24, 43.23, 43.22, 43.21, 43.20, 43.185, 43.17, 43.14, 43.12, 43.1])
 pulsetime=0.02
-wait=0.01
+wait=0.02
 vva=4.5
 n_dimer_repeat = 2
 fname = "phase_shift_scanlist.xlsx"
