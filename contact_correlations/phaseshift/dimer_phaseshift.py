@@ -10,11 +10,11 @@ Refactored analysis script for dimer phase shift measurements of April-June 2024
 # paths
 
 import os
-analysis_folder = 'E:\\\\Analysis Scripts\\analysis\\'
+analysis_folder = os.path.dirname(os.path.dirname(os.path.dirname(__file__))) + '\\analysis'
 import sys
 if analysis_folder not in sys.path:
 	sys.path.append(analysis_folder)
-data_path = os.path.join(analysis_folder, 'contact_correlations\\phaseshift\\data')
+data_path = r'\\UNOBTAINIUM\E_Carmen_Santiago\Analysis Scripts\Fast-Modulation-Contact-Correlation-Project\contact_correlations\phaseshift\data'
 from library import pi, h, hbar, mK, a0, plt_settings, styles, colors
 #from fit_functions import Gaussian, Sinc2
 from data_helper import remove_indices_formatter
@@ -53,16 +53,17 @@ state_selection = '97'
 
 #spins = ['c5', 'c9', 'sum95']
 #spins = ['c5', 'c9', 'ratio95']
-spins = ['c5','c9']
+spins = ['c5']
 
 # freq_name = 'detuning_EF' #'freq'/detuning
 freq_name = 'freq'
 ### metadata
 metadata_filename = ana_str+'_metadata.xlsx'
+proj_path = os.path.dirname(__file__) + '\\phaseshift'
 metadata_file = os.path.join(proj_path, metadata_filename)
 metadata = pd.read_excel(metadata_file)
 files =  metadata.loc[metadata['exclude'] == 0]['filename'].values
-files = ["2024-06-18_D_e"]
+files = ["2024-05-10_V_e"]
 
 def spin_map(spin):
 	if spin == 'c5':

@@ -7,30 +7,29 @@ Analyse wiggle phase shift measurements from Oct 27 2023, where binding energies
 
 """
 import sys
-# module_folder = 'E:\\Analysis Scripts\\analysis'
-module_folder = '//Users//kevinxie//Documents//GitHub//analysis//phaseshift'
+import os
+module_folder = 'E:\\Analysis Scripts\\analysis'
 if module_folder not in sys.path:
-	sys.path.insert(0, module_folder)
+	sys.path.insert(0, 'E:\\Analysis Scripts\\analysis')
 from data_class import Data
 from library import FreqMHz
-from fit_functions import Gaussian
+from fit_functions import Gaussian, Sinc2
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
 ### load data and set up
-# run = '2024-04-05_F'
-run = '2024-04-26_D'
-run_fn = run + '_e.dat'
+run_fn = '2024-04-29_F_e.dat'
+# run_fn = '2025-09-24_D_e.dat'
 meta_df = pd.read_excel('phaseshift_summary.xlsx')
-meta_df = meta_df.loc[meta_df['filename'] == run_fn]
+meta_df = meta_df.loc[meta_df['filename'] == run_fn[:-4]]
 run_freq = meta_df.freq.values[0]
 x_name = "freq"
 y_name = "sum95"
 fit_func = Gaussian
 guess = [-5000, 43.25, 0.01, 35000] # A, x0, sigma, C
-data_folder = 'data/'
+data_folder = os.path.dirname(__file__) +'\phaseshift\data'
 run = Data(run_fn, path=data_folder)
 
 
@@ -41,7 +40,7 @@ def FixedSinkHz(t, A, p, C):
 	return A*np.sin(omega * t - p) + C
 
 Bcal_fn = meta_df.Bcal_run.values[0]
-Bcal_df = pd.read_csv('../data/FieldWiggleCal/field_cal_summary.csv')
+Bcal_df = pd.read_csv(os.path.dirname(__file__) +'/FieldWiggleCal/field_cal_summary.csv')
 Bcal_df = Bcal_df.loc[Bcal_df.run == Bcal_fn]
 def Bfield_from_time(t, arb_scaling=1):
     omega=2*np.pi*Bcal_df.wiggle_freq.values[0] / 1000 # kHz
