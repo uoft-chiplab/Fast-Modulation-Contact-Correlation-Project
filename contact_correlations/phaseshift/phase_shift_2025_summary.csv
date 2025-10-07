@@ -1,0 +1,3 @@
+,Pulse Time (us),Modulation Freq (kHz),Phase Shift A-f0 (rad),Phase Shift A-f0 err (rad),Phase Shift f0-B (rad),Phase Shift f0-B err (rad),Phase Shift C-B (rad),Phase Shift C-B err (rad),Dropped Wiggle Times (ms)
+2025-09-24_E,20,6,0.945495401,0.33222416,-0.071890877,0.026605758,0.873604532,0.332571003,[]
+2025-10-01_L,20,10.0,1.8,0.5854731150590462,0.1902990186183792,0.048778517548716316,0.06672215417983907,0.6342516197237034,0.18217326453530328,[0.29]
