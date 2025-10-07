@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import pandas as pd
 import sys 
+import random
 
 def sinc2(x, A, x0, sigma, C):
 	return np.abs(A)*(np.sinc((x-x0) / sigma)**2) + C
@@ -36,19 +37,20 @@ def generate_spectra_scanlist(trf, f0, n_peak, n_bg, max_bg_freq_in_width=2):
 
 export = True
 # times
-t = np.array([0.20, 0.22, 
-              0.24, 0.26, 0.32, 0.34, 0.36, 0.38
-                    ]) #np.linspace(min(x), max(), 7)
+pulsetime=0.020
+t = np.array([0.2, 0.265, 0.315
+					]) #np.linspace(min(x), max(), 7)
 f = 10 #kHz
+amp = 1.8 # Vpp
 ###expected phase shift based on frequency of mod (and temp etc in theory)
-shift = 0.7/2/np.pi * 1/f*1000 
-t = t + np.round(shift, decimals=-1)/1000
+# shift = 0.7/2/np.pi * 1/f*1000 
+# t = t + np.round(shift, decimals=-1)/1000
+###expected time accounting for 1/2 pulse length since the dimer is formed in the middle of the pulsetime
+t_pulse = t - pulsetime/2
 # frequencies
-# x = np.array([43.34, 43.32, 43.3,43.285, 43.27, 43.26, 43.25, 43.24, 43.23, 43.22, 43.21, 43.20, 43.185, 43.17, 43.14, 43.12, 43.1])
-pulsetime=0.02
 wait=0.02
 vva=4.5
-n_dimer_repeat = 2
+n_dimer_repeat = 4
 fname = "phase_shift_scanlist.xlsx"
 #saving in E:\Analysis Scripts\Fast-Modulation-Contact-Correlation-Project
 x0 = 47.2227
@@ -63,158 +65,151 @@ if module_folder not in sys.path:
 ###getting the field wiggle calibration done previously 
 field_cal_path = r"E:\Analysis Scripts\Fast-Modulation-Contact-Correlation-Project\FieldWiggleCal\field_cal_summary.csv"
 field_cal_df = pd.read_csv(field_cal_path)
-field_cal_df = field_cal_df[field_cal_df['run'] == '2024-04-05_G']
+field_cal_df = field_cal_df[(field_cal_df['wiggle_freq'] == f) & (field_cal_df['wiggle_amp'] == amp)]
 
+#'2025-09-19_D'
 ###plotting field calibration 
 
 t2 = np.linspace(min(t), max(t), 100)
 ###fitting sin to field calibration
 from scipy.optimize import curve_fit
 def fit_fixedSinkHz(t, y, run_freq, eA, p0=None):
-    """
-    need docstring, and maybe a better way to code this
-    t in ms, freq in kHz
-    """
-    def FixedSinkHz(t, A, p, C):
-        omega = run_freq * 2 * np.pi # kHz
-        return A*np.sin(omega * t - p) + C
+	"""
+	need docstring, and maybe a better way to code this
+	t in ms, freq in kHz
+	"""
+	def FixedSinkHz(t, A, p, C):
+		omega = run_freq * 2 * np.pi # kHz
+		return A*np.sin(omega * t - p) + C
 
-    if p0 == None:
-         A = (max(y)-min(y))/2
-         C = (max(y)+min(y))/2
-         p = np.pi
-         p0 = [A, p, C]
+	if p0 == None:
+		 A = (max(y)-min(y))/2
+		 C = (max(y)+min(y))/2
+		 p = np.pi
+		 p0 = [A, p, C]
 
-    if np.any(eA != 0):
+	if np.any(eA != 0):
 
-        popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]), sigma=eA)
-        perrs = np.sqrt(np.diag(pcov))
+		popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]), sigma=eA)
+		perrs = np.sqrt(np.diag(pcov))
 
 
 
-        # plabel = fit_label(popts, perrs, ["A", "p", "C"])#, units=["", f"$\pi$", ""])
+		# plabel = fit_label(popts, perrs, ["A", "p", "C"])#, units=["", f"$\pi$", ""])
 
-    else: 
-        popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]))
-        perrs = np.sqrt(np.diag(pcov))
+	else: 
+		popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]))
+		perrs = np.sqrt(np.diag(pcov))
 
-    # rescales phase by pi for label
-        # plabel = fit_label(popts, perrs, ["A", "p", "C"])#, units=["", f"$\pi$", ""])
+	# rescales phase by pi for label
+		# plabel = fit_label(popts, perrs, ["A", "p", "C"])#, units=["", f"$\pi$", ""])
 
-    return popts, perrs, FixedSinkHz
+	return popts, perrs, FixedSinkHz
 field_params = field_cal_df[['B_amp', 'B_phase', 'B_offset']].values[0]
 field_params[1] += np.pi # add pi phase shift to comapre to freq
 
 popts, pcov, sin = fit_fixedSinkHz(t, np.sin((f*2*np.pi)*t-field_cal_df['B_phase'].values), f, 0, p0=[0.07,6,202.1])
 
-plt.plot(t, np.sin((f*2*np.pi)*t-field_cal_df['B_phase'].values), marker="o", ls="", color="hotpink")
+plt.plot(t, np.sin((f*2*np.pi)*t-field_cal_df['B_phase'].values), marker="o", ls="", color="hotpink", 
+		 label = 'Expected Phase Shift Time')
 plt.plot(t2, np.sin((f*2*np.pi)*t2-field_cal_df['B_phase'].values), marker="", ls="-", color="hotpink")
-plt.plot(t2, sin(t2, *popts), marker="", ls="--", color="cornflowerblue")
+# plt.plot(t2, sin(t2, *popts), marker="", ls="--", color="cornflowerblue")
+plt.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_cal_df['B_phase'].values), marker="o", ls="", color="cornflowerblue", 
+		 label = 'Time of Beginning of Pulse')
 plt.xlabel("time (ms)")
 plt.ylabel("B (au)")
+# plt.legend()
 
 def B_to_f0(x):
-    """
-    given a frequency corresponding to the dimer center position get a field out
-    lists taken from the breit rabi notebook since I didn't want to code it all out lmao
-    then I realized these frequencies are for on resonance for 7->5 at 202-202.5
-    and I figured I could just subtract the frequency expected for the dimer at 202.14 to get the 
-    detuning 
-    """
-    xs = [47.1989, 47.2159, 47.2329, 47.2498, 47.2668, 47.2838]
-    xs = np.array(xs) - 43.2227
-    ys = [202., 202.1, 202.2, 202.3, 202.4, 202.5]
-    # ys.reverse() # higher Eb = lower field
+	"""
+	given a frequency corresponding to the dimer center position get a field out
+	lists taken from the breit rabi notebook since I didn't want to code it all out lmao
+	then I realized these frequencies are for on resonance for 7->5 at 202-202.5
+	and I figured I could just subtract the frequency expected for the dimer at 202.14 to get the 
+	detuning 
+	"""
+	#dimer center pts freqs based on 2025-10-01_L run 
+	xs = [4.008814, 4.008802, 4.002268, 3.99069,3.990477, 3.973251, 3.973131, 3.960835,   
+		  3.95955]
+	ys = [ 202.04432777360583, 202.04432777360583, 202.08310682397507, 
+		  202.14250352617975, 202.14250352617975, 202.20524934772862, 
+			  202.20524934772862, 202.24195852851076,  202.24195852851076]
 
-    return np.interp(x,ys,xs)
+	xs.reverse() # higher Eb = lower field
+
+	return np.interp(x,ys,xs)
 
 #generate a list of f0s based on B for each time we choose 
-predicted_f0s_list = []
-for times in t:
-      #find f0s 
-      B_to_f0(sin(times, *field_params))
-      predicted_f0s_list.append(B_to_f0(sin(times, *field_params)))
+#using t because I want the f0 associated with the time that the phase shift is measured at
+Bs = sin(t, *field_params)
+predicted_f0s_list = B_to_f0(Bs)
+
 #generate scanlist for each f0
 f0slist = []   
 for f0s in predicted_f0s_list:
-    f0slist.append(generate_spectra_scanlist(20, f0s, 7, 3, max_bg_freq_in_width=2))
+	f0slist.append(generate_spectra_scanlist(pulsetime*1000, f0s, 7, 3, max_bg_freq_in_width=2))
+
+if randomize:
+	  random.shuffle(f0slist)
+
+SHOW_SCANLIST= True
+if SHOW_SCANLIST:
+	fig, ax = plt.subplots()
+	for i, fs in enumerate(f0slist):
+		ax.plot(fs, np.ones(len(fs))*(i+1), marker="o", ls="")
+	ax.set(xlabel="-Detuning (MHz)", ylabel="Scan #")
+####exporting scan list to excel
+all_scans = []
+f0s_repeated = f0slist * n_dimer_repeat
+# if export:
+#      #t_pulse here since the time the pulse starts is different than the expected ps shift time
+# 	for idx, (f0s, time_val) in enumerate(zip(f0s_repeated, t_pulse)):
+# 		ts = time_val 
+# 		chargetimes = 1 - ts - pulsetime - wait
+# 		assert len(f0s_repeated) == len(t) * n_dimer_repeat
+			
+# 		vvas = np.ones_like(f0s) * vva
+
+# 		scan_df = pd.DataFrame({
+# 			"freq": f0s,
+# 			"vva": vvas,
+# 			"chargetime": chargetimes,
+# 			"time": ts,
+#             'Pulse Time': pulsetime
+# 		})
+# 		all_scans.append(scan_df)
+
+# 	final_df = pd.concat(all_scans, ignore_index=True)
+# 	final_df.to_excel(fname, index=False)
 
 # ###exporting scan list to excel
 all_scans = []
 f0s_repeated = f0slist * n_dimer_repeat
 if export:
-     
-	for idx, (f0s, time_val) in enumerate(zip(f0s_repeated, t)):
+	 #t_pulse here since the time the pulse starts is different than the expected ps shift time
+	for idx, (f0s, time_val) in enumerate(zip(f0s_repeated, t_pulse)):
 		ts = time_val #np.repeat(t, len(f0s) * n_dimer_repeat)  # shape: (len(f0s) * len(t),)
 		chargetimes = 1 - ts - pulsetime - wait
-		# f0s_repeated = f0slist * n_dimer_repeat #np.tile(f0s, len(t) * n_dimer_repeat)
 		assert len(f0s_repeated) == len(t) * n_dimer_repeat
 		# print(f0s)
-            
+			
 		ds = x0 - f0s
-    ###adding in points for 0 VVA bg shots
-		x = np.ones_like(np.linspace(0,4,4))*43
+	###adding in points for 0 VVA bg shots
+		num_bg_pts = 2
+		x = np.ones_like(np.linspace(0, num_bg_pts,1))*43
 		ds = np.append(ds, x)
 		f0s = np.append(f0s, x0 -x)
 		vvas = np.ones_like(ds) * vva
 		vvas[ds <= 43.01] = 0
 
 		scan_df = pd.DataFrame({
-			"freq": f0s,
-			"det": ds,
+			"freq": ds,
+			"det": f0s,
 			"vva": vvas,
 			"chargetime": chargetimes,
 			"time": ts
 		})
-		# print(scan_df)
 		all_scans.append(scan_df)
-
+	
 	final_df = pd.concat(all_scans, ignore_index=True)
 	final_df.to_excel(fname, index=False)
-
-      
-###plotting 2 of the sinc2 
-# plt.figure()
-
-# p = [0.14272243, 3.98, 0.05228547, 0.01898835]
-# d = x0-x
-# d2 = np.linspace(min(d), max(d), 100)
-# plt.plot(d, sinc2(d, *p), marker="o", ls="", color="hotpink", label=f"x0={p[1]}")
-# plt.plot(d2, sinc2(d2, *p), marker="", ls="-", color="hotpink")
-
-# p = [0.14272243, 4.00, 0.05228547, 0.01898835]
-# plt.plot(d, sinc2(d, *p), marker="o", ls="", color="cornflowerblue", label=f"x0={p[1]}")
-# plt.plot(d2, sinc2(d2, *p), marker="", ls="-", color="cornflowerblue")
-# plt.xlabel("detuning (MHz)")
-# plt.ylabel("transfer")
-# plt.legend()
-
-
-###exporting scan list to excel
-# if export:
-# 	if randomize:
-# 		# shuffles in place
-# 		np.random.shuffle(x)
-# 		np.random.shuffle(t)
-
-# 	# add background point
-# 	x = np.append(x, 43)
-
-# 	# resize time to match freq arr size to keep time constant for each dimer scan
-# 	ts = np.repeat(t, len(x)*n_dimer_repeat) # makes array of [t1, t1, ... tn, tn...]
-# 	chargetimes = 1 - ts - pulsetime - wait
-
-# 	# repeat dimer scan list for all times
-# 	xs = np.resize(x, len(x)*n_dimer_repeat*len(t)) # makes array [x1, x2, xn... x1, x2, xn]
-# 	# repeat 3 times
-
-# 	ds = x0-xs
-# 	# update vva of background point
-# 	vvas = np.ones(len(xs))*vva
-# 	vvas[xs <= 43.001] = 0
-
-# 	# concatenate time and frequency scan lists
-# 	scan_list = np.stack([xs, ds, vvas, chargetimes, ts], axis=1)
-# 	scan_list = pd.DataFrame(scan_list, columns=["freq", "det", "vva", "chargetime", "time"])
-# 	scan_list.to_excel(fname, index=False)
-

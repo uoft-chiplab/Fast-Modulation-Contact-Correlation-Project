@@ -26,13 +26,13 @@ import pandas as pd
 from scipy.optimize import curve_fit
 
 # run metadata
-run = "2025-09-19_D" 
-wiggle_freq = 6 # kHz
+run = "2025-10-02_E" 
+wiggle_freq = 6# kHz
 wiggle_amp = 1.8 # Vpp
 note = ''
 
-# parameters relevent for analysis
-x_name = "freq (MHz)"
+# parameters relevent for analysis // may be specific to data name
+x_name = "freq"
 y_name = "fraction95"
 fit_func = Sinc2
 num = 500
@@ -48,7 +48,8 @@ def FixedSinkHz(t, A, p, C):
 # initalize no guesses, but fill them in if needed
 guess = [0.035, 2, 202.16]
 
-file_list = glob.glob(f"{os.path.dirname(__file__)}\\{run}\\*pre*.dat")
+# this may need to be adjusted depending on how the data was named
+file_list = glob.glob(f"{os.path.dirname(__file__)}\\{run}\\*time*.dat") 
 times = [float(path.split("=")[-1][:-4]) for path in file_list]
 
 data_df = pd.DataFrame({})
@@ -57,7 +58,7 @@ for file in file_list:
 	data = Data(file, path=data_folder)
 	data_df = pd.concat([data_df, data.data], ignore_index=True)
 
-pulse_lengths = np.unique(data_df["pulse time"])*1e3 # ms to us
+pulse_lengths = np.unique(data_df["Pulse Time"])*1e3 # ms to us
 	
 popt_list = []
 perr_list = []
@@ -66,8 +67,8 @@ e_B_list = []
 delay_time_list = []
 pulse_length_list = []
 
-data_df['pulse_length'] = data_df['pulse time'] * 1e3  # Convert ms to us
-data_df['time'] = data_df['wiggle time pre']*1000 + data_df['pulse_length']/2.0
+data_df['pulse_length'] = data_df['Pulse Time'] * 1e3  # Convert ms to us
+data_df['time'] = data_df['Wiggle Time']*1000 + data_df['pulse_length']/2.0
 
 ### Fit 97 transfer scans as function of frequency
 for i, time in enumerate(data_df.time.unique()):

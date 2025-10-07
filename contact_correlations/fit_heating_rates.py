@@ -23,6 +23,16 @@ there are any empty DataFrame entries in the new "update" DataFrame. I'm not
 sure how to get around this. Currently, this analysis file does not produce
 any DataFrame rows that have empty cells, so this shouldn't be an issue.
 """
+import os
+import sys
+# Analysis Scripts/
+root = os.path.dirname(os.path.dirname(os.getcwd()))
+
+# Fast-Modulation-Contact-Correlation-Project\analysis
+analysis_folder = os.path.join(root, "analysis")
+if analysis_folder not in sys.path:
+	sys.path.append(analysis_folder)
+
 from data_class import Data
 from library import deBroglie, deBroglie_kHz, a97, chi_sq, mK, hbar, h, kB, pi, \
 	plt_settings, colors, markers, tintshade, tint_shade_color
