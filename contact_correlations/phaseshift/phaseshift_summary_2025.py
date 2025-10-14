@@ -50,7 +50,7 @@ EFs = np.array(df['EF_kHz']*1000)
 ToTFs = [0.3,
 		#  0.3,0.3,0.3,0.3, 0.3, 0.3
 		]
-EFs = [10*1000,
+EFs = [12*1000,
 	#    12*1000,14*1000,16*1000,18*1000, 20*1000, 5*1000
 	   ]
 barnu = 377
@@ -59,6 +59,7 @@ num = 50
 def contact_time_delay(phi, period):
 	""" Computes the time delay of the contact response given the oscillation
 		period and the phase shift.
+		phi /  (omega) = phi/(2*pi) * period
 	"""
 	return phi/(2*np.pi) * period
 
@@ -95,49 +96,132 @@ for i in range(len(ToTFs)):
 
 with open(pickle_file, 'wb') as f:
 	pickle.dump(BVTs, f)
-# plot phase shift and time delay of contact response
+# plot phase shift
 subfigs = 1
-fig, axs = plt.subplots(1, subfigs, figsize=(5*subfigs, 4))
-# axs = axs.flatten()
+fig, axs = plt.subplots(1,2, figsize=(8*subfigs, 4))
+axs = axs.flatten()
 # phase shift
 ax = axs
-ax.set(
+
+
+templist = [0.3, 0.275, 
+			# 0.2691
+			]
+EFslist  = [10,10, 
+			# 12.62
+			]
+
+colors_light = ['powderblue', 'plum', 
+				'lightpink'
+				]
+colors_dark = ['steelblue', 'orchid', 'palevioletred']
+
+#making 2 subplots 
+for b in range(2):
+    current_ax = ax[b]
+    
+    if b == 0:
+        xlabel = r"$h\nu/k_BT$"	
+        ylabel = rf'$\phi = \arctan(2\pi\omega \tau)$ [rad]'
+    else:
+        xlabel = r"$\nu$ [Hz]"
+        ylabel = ''
+
+    # Loop over BVTs to plot theory curves
+    for j, BVT in enumerate(BVTs):
+        if b == 0:
+            x_theory = BVT.nus / BVT.T
+        else:
+            x_theory = BVT.nus
+
+        EF_kHz = (BVT.T / BVT.ToTF) / 1e3
+        label2 = f'ToTF={BVT.ToTF}, EF={EF_kHz:.0f} kHz'
+
+        current_ax.plot(x_theory, BVT.phiLR, ':', color=colors[j], label=label2)
+
+    # Plot data for current axis
+    for i, (temp, ef_val) in enumerate(zip(templist, EFslist)):
+        if b == 0:
+            x_data = data_2025['Modulation Freq (kHz)'][i] / temp / ef_val
+        else:
+            x_data = data_2025['Modulation Freq (kHz)'][i]*1e3
+
+        current_ax.errorbar(
+            x_data,
+            data_2025['Phase Shift C-B (rad)'][i],
+            yerr=data_2025['Phase Shift C-B err (rad)'][i],
+            color=colors_light[i],
+            label=f'C-B: {data_2025["Modulation Freq (kHz)"][i]}kHz'
+        )
+
+        current_ax.errorbar(
+            x_data,
+            data_2025['Phase Shift A-f0 (rad)'][i],
+            yerr=data_2025['Phase Shift A-f0 err (rad)'][i],
+            color=colors_dark[i],
+            label=f'A-f0: {data_2025["Modulation Freq (kHz)"][i]}kHz, {data_2025["Unnamed: 0"][i]}'
+        )
+	# Set axis properties
+    current_ax.set(
 	# xlabel=r"Frequency, $\nu/T$", 
-	xlabel=r"Frequency, $h\nu/k_BT$", 
-	   ylabel=r"Phase Shift, $\phi$ [rad]", xscale='log',
-	   ylim=[0,1])
+	xlabel=xlabel, 
+	#    ylabel=r"Phase Shift, $\phi$ [rad]",
+	 xscale='log',
+ylabel = ylabel,
+	#    ylim=[0,1]
+    )
+current_ax.legend(fontsize=8)
+fig.tight_layout()
 
-templist = [0.3, 0.275]
-EFslist  = [10,10]
 
+###time lag plot
+fig, axs = plt.subplots(1, subfigs, figsize=(5*subfigs, 4))
 for b, BVT in enumerate(BVTs):
-		BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)	
-		label = r"T={:.0f} kHz".format(BVT.T)
-		label2 = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
+	BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)
+	BVT.time_delay_LR_noz = contact_time_delay(BVT.phiLR_noz, 1/BVT.nus)
 
-		ax.plot(BVT.nus/BVT.T, BVT.phiLR, ':', color=colors[b], 
-		  label = label2
+	axs.plot(BVT.nus/BVT.T, BVT.time_delay_LR*1e3, ':', color=colors[b], 
+		  label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
 		  )
-		ax.plot(BVT.nus/BVT.T, BVT.phiLR_noz, ':', color=colors[b+1], label ='tau no z')
-		plot_df = df[(df['EF_kHz'] == EFs[b]/1000)]
-		# axs[1].errorbar(plot_df['ScaledFreq'], 
-		# 		  plot_df['time_lag']*1e3,
-		# 		  yerr=plot_df['e_time_lag']*1e3, color=colors[b])
-	#####2024 data######
-		# ax.errorbar(plot_df['ScaledFreq'], plot_df['ps'], yerr=plot_df['e_ps'], \
-		# 		  color=colors[b])
-	#####2025 data######
-		for (i, temp, EFs) in zip(data_2025.index, templist, EFslist):
-			ax.errorbar(data_2025['Modulation Freq (kHz)'][i]/temp/EFs,data_2025['Phase Shift C-B (rad)'][i], yerr= data_2025['Phase Shift C-B err (rad)'][i],
-            color = 'powderblue', 
-			label = f'C-B: {data_2025['Modulation Freq (kHz)'][i]}kHz'
-			# label=f'C-B{data_2025['Unnamed: 0'][i]}'
-			)
-			ax.errorbar(data_2025['Modulation Freq (kHz)'][i]/temp/EFs,data_2025['Phase Shift A-f0 (rad)'][i], yerr= data_2025['Phase Shift A-f0 err (rad)'][i],
-            color = 'steelblue', label=f'A-f0: {data_2025['Modulation Freq (kHz)'][i]}kHz')
-# ax.errorbar(data_2025['Modulation Freq (kHz)']/0.275/10,data_2025['Phase Shift C-B (rad)'], yerr= data_2025['Phase Shift C-B err (rad)'],
-#             color = 'powderblue', label='C-B')
-# ax.errorbar(data_2025['Modulation Freq (kHz)']/0.275/10,data_2025['Phase Shift A-f0 (rad)'], yerr= data_2025['Phase Shift A-f0 err (rad)'],
-#             color = 'steelblue', label='A-f0')
-ax.set(ylim=[0, np.pi/2])
-ax.legend()
+	axs.plot(BVT.nus/BVT.T, BVT.time_delay_LR_noz*1e3, ':', color=colors[b+1], 
+		  label = f'no z in tau'
+		  )
+	for (i, temp, EFs) in zip(data_2025.index, templist, EFslist):
+		x = data_2025['Modulation Freq (kHz)'][i]/temp/EFs
+		y_A = contact_time_delay(data_2025['Phase Shift A-f0 (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
+		y_A_err = contact_time_delay(data_2025['Phase Shift A-f0 err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
+		y_C = contact_time_delay(data_2025['Phase Shift C-B (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
+		y_C_err = contact_time_delay(data_2025['Phase Shift C-B err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
+
+		axs.errorbar(x, y_C, yerr=y_C_err, 
+			   color=colors_light[i], 
+			   label=f'C-B: {data_2025['Modulation Freq (kHz)'][i]}kHz, {data_2025['Unnamed: 0'][i]}')
+		axs.errorbar(x, y_A, yerr=y_A_err, 
+			   color=colors_dark[i], 
+			   label=f'A-f0: {data_2025['Modulation Freq (kHz)'][i]}kHz')
+
+axs.legend()
+axs.set(
+	xlabel=r"$h\nu/k_BT$", 
+	#    ylabel=r"Time Delay [ms]",
+	ylabel = rf'$\phi$/2/$\pi$/$\omega$ [ms]', 
+
+)
+
+###amplitude of sin fits plot 
+fig, axs = plt.subplots(1, subfigs, figsize=(5*subfigs, 4))
+for (i, temp, EFs) in zip(data_2025.index, templist, EFslist):
+	x = data_2025['Modulation Freq (kHz)'][i]/temp/EFs
+	axs.errorbar(x, data_2025['Amplitude of Sin Fit of A'][i], 
+			  yerr = data_2025['Error of Amplitude of Sin Fit of A'][i],
+			  marker='o', ls='', color=colors_light[i], label=f'A: {data_2025['Modulation Freq (kHz)'][i]}kHz, ')
+	axs.errorbar(x, data_2025['Amplitude of Sin Fit of C'][i], 
+		  yerr = data_2025['Error of Amplitude of Sin Fit of C'][i],
+		  marker='o', ls='', color=colors_dark[i], 
+		  label=f'C: {data_2025['Modulation Freq (kHz)'][i]}kHz, {data_2025['Unnamed: 0'][i]}')
+
+axs.set(
+	xlabel=r"$h\nu/k_BT$", 
+	   ylabel=r"Amplitude of Sin Fit",
+)
+axs.legend()

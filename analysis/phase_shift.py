@@ -16,7 +16,10 @@ remember to change field_cal run name to match wiggle run for correct B plot!
 # settings for directories, standard packages...
 from preamble import *
 
-run = "2025-09-24_E" # need date and letter
+run = "2025-10-01_L" # need date and letter
+#"2025-09-24_E" is 6kHz 20us pulse 
+#2025-10-01_L is 10kHz 20us pulse 
+time_column_name = "Wiggle Time"
 #### best way to do this might be to specify drive freq and drive amp of run 
 # and then pull the correct calibration.
 wiggle_amp = 1.8 #Vpp
@@ -24,14 +27,14 @@ wiggle_freq = 6 # kHz
 field_cal_path = os.path.join(root_project, r"FieldWiggleCal\field_cal_summary.csv")
 field_cal_df = pd.read_csv(field_cal_path)
 field_cal = field_cal_df[(field_cal_df['wiggle_freq']==wiggle_freq) & \
-                         (field_cal_df['wiggle_amp']==wiggle_amp)
-                            ]
+						 (field_cal_df['wiggle_amp']==wiggle_amp)
+							]
 if len(field_cal) > 1:
-    field_cal =field_cal[field_cal['pulse_length']==40]
+	field_cal =field_cal[field_cal['pulse_length']==40]
 # 2025-09-19_D is for 6 kHz 1.8 Vpp
 # 2024-04-05_G is for 10 kHz 1.8 Vpp
 # optionally specify points to exclude
-dropped_list = [0.29]
+dropped_list = []
 
 DC_cal_path = os.path.join(root_data, r"2025\09 September2025\31September2025\D_DCfield_dimer20us_5VVA_arggghhhh\DC_field_cal.csv")
 DC_cal_csv = pd.read_csv(DC_cal_path)
@@ -42,113 +45,120 @@ Export = False
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
-fix_width = False # whether or not dimer spectra sinc2 fits have a fixed width
+fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
+plot_bg = True # whether or not to plot background points and fit
 
 def f0_to_B(x):
-    """
-    given a frequency corresponding to the dimer center position get a field out
-    lists taken from the breit rabi notebook since I didn't want to code it all out lmao
-    then I realized these frequencies are for on resonance for 7->5 at 202-202.5
-    and I figured I could just subtract the frequency expected for the dimer at 202.14 to get the 
-    detuning 
-    """
-    xs = [47.1989, 47.2159, 47.2329, 47.2498, 47.2668, 47.2838]
-    xs = np.array(xs) - 43.2227
-    ys = [202., 202.1, 202.2, 202.3, 202.4, 202.5]
-    ys.reverse() # higher Eb = lower field
+	"""
+	given a frequency corresponding to the dimer center position get a field out
+	lists taken from the breit rabi notebook since I didn't want to code it all out lmao
+	then I realized these frequencies are for on resonance for 7->5 at 202-202.5
+	and I figured I could just subtract the frequency expected for the dimer at 202.14 to get the 
+	detuning 
+	"""
+	xs = [47.1989, 47.2159, 47.2329, 47.2498, 47.2668, 47.2838]
+	xs = np.array(xs) - 43.2227
+	ys = [202., 202.1, 202.2, 202.3, 202.4, 202.5]
+	ys.reverse() # higher Eb = lower field
 
-    return np.interp(x,xs,ys)
+	return np.interp(x,xs,ys)
 
 def find_transfer(df):
-    """
-    given df output from matlab containing atom counts, returns new df containing detuning, 
-    5 and 9 counts, and transfer/loss
-    """
-    run_data = df[["detuning", "VVA", "c5", "c9"]]
+	"""
+	given df output from matlab containing atom counts, returns new df containing detuning, 
+	5 and 9 counts, and transfer/loss
+	"""
+	run_data = df[["detuning", "VVA", "c5", "c9"]]
 
-    bg = df[df["VVA"] == 0]
-    c5bg, c9bg = np.mean(bg[["c5", "c9"]], axis=0)
-    c5bg_err = np.std(bg.c5)/len(bg.c5)
+	bg = df[df["VVA"] == 0]
 
-    data = run_data[df["VVA"] != 0].copy()
-    data.loc[data.index, "c5transfer"] = (1-data["c5"]/c5bg)/2 # factor of 2 assumes atom-molecule loss
-    data.loc[data.index, "c5bg"] = c5bg
-    data.loc[data.index, "ec5bg"] = c5bg_err
+	if (len(bg.c5) > 1):
+		c5bg, c9bg = np.mean(bg[["c5", "c9"]], axis=0)
+		c5bg_err = np.std(bg.c5)/len(bg.c5)
+	else:
+		c5bg, c9bg = bg[['c5', 'c9']].values[0]
+		c5bg_err = 0
+	print(c5bg, c9bg)
+	data = run_data[df["VVA"] != 0].copy()
+	data.loc[data.index, "c5transfer"] = (1-data["c5"]/c5bg)/2 # factor of 2 assumes atom-molecule loss
+	data.loc[data.index, "c5bg"] = c5bg
+	data.loc[data.index, "ec5bg"] = c5bg_err
 
-    return data
+	return data
 
 def avg_transfer(df):
 
-    bg_err_rel = (df.ec5bg/df.c5bg).values[0] # same for all points
+	bg_err_rel = (df.ec5bg/df.c5bg).values[0] # same for all points
 
-    # uncertainty in mean
-    count = df.groupby("detuning")["c5"].count()
-    std = df.groupby("detuning")["c5"].std()
-    mean = df.groupby("detuning")["c5"].mean()
+	# uncertainty in mean
+	count = df.groupby("detuning")["c5"].count()
+	std = df.groupby("detuning")["c5"].std()
+	mean = df.groupby("detuning")["c5"].mean()
 
-    c5_err_rel = ((std/count)/mean).values
-    transfer_mean = df.groupby("detuning")["c5transfer"].mean()
+	c5_err_rel = ((std/count)/mean).values
+	transfer_mean = df.groupby("detuning")["c5transfer"].mean()
 
-    transfer_df_avg = pd.DataFrame(
-                        {
-                        'c5transfer' : transfer_mean,
-                        'ec5transfer' : transfer_mean.values*np.sqrt(c5_err_rel**2 + bg_err_rel**2)}
-                        )
+	transfer_df_avg = pd.DataFrame(
+						{
+						'c5transfer' : transfer_mean,
+						'ec5transfer' : transfer_mean.values*np.sqrt(c5_err_rel**2 + bg_err_rel**2)}
+						)
 
-    return transfer_df_avg
+	return transfer_df_avg
 
 def fit_sinc2(xy, width=False):
-    """
-    fits xy, input as single array, to sinc2 function. returns fitted params, errors, and label
+	"""
+	fits xy, input as single array, to sinc2 function. returns fitted params, errors, and label
 
-    if a width is provided, fits sinc with fixed width and 0 background
+	if a width is provided, fits sinc with fixed width and 0 background
 
-    TODO: keep background fixed at 0
-    """
-    f, p0, paramnames = Sinc2(xy)
+	TODO: keep background fixed at 0
+	"""
+	f, p0, paramnames = Sinc2(xy)
 
-    if width:
-         sinc2 = lambda x, A, x0: f(x, A, x0, width,0)
-         p0 = p0[:2]
-         paramnames = paramnames[:2]
-    else:
-        #  sinc2 = f
-        sinc2 = lambda x, A, x0, width: f(x, A, x0, width,0)
-        p0 = p0[:3]
-        paramnames = paramnames[:3]
+	if width:
+		sinc2 = lambda x, A, x0: f(x, A, x0, width,0)
+		p0 = p0[:2]
+		paramnames = paramnames[:2]
+		
+	else:
+		#  sinc2 = f
+		sinc2 = lambda x, A, x0, width: f(x, A, x0, width,0)
+		p0 = p0[:3]
+		paramnames = paramnames[:3]
 
-    popts, pcov = curve_fit(sinc2, xy[:,0], xy[:,1], p0)
-    perrs = np.sqrt(np.diag(pcov))
-    plabel = fit_label(popts, perrs, paramnames)
+	popts, pcov = curve_fit(sinc2, xy[:,0], xy[:,1], p0)
+	perrs = np.sqrt(np.diag(pcov))
+	plabel = fit_label(popts, perrs, paramnames)
 
-    return popts, perrs, plabel, sinc2
+	return popts, perrs, plabel, sinc2
 
 def fit_fixedSinkHz(t, y, run_freq, eA, p0=None):
-    """
-    need docstring, and maybe a better way to code this
-    t in ms, freq in kHz
-    """
-    def FixedSinkHz(t, A, p, C):
-        omega = run_freq * 2 * np.pi # kHz
-        return A*np.sin(omega * t - p) + C
+	"""
+	need docstring, and maybe a better way to code this
+	t in ms, freq in kHz
+	"""
+	def FixedSinkHz(t, A, p, C):
+		omega = run_freq * 2 * np.pi # kHz
+		return A*np.sin(omega * t - p) + C
 
-    if p0 == None:
-         A = (max(y)-min(y))/2
-         C = (max(y)+min(y))/2
-         p = np.pi
-         p0 = [A, p, C]
+	if p0 == None:
+		A = (max(y)-min(y))/2
+		C = (max(y)+min(y))/2
+		p = np.pi
+		p0 = [A, p, C]
 
-    if np.any(eA != 0):
-        popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]), sigma=eA)
-        perrs = np.sqrt(np.diag(pcov))
+	if np.any(eA != 0):
+		popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]), sigma=eA)
+		perrs = np.sqrt(np.diag(pcov))
 
-    else: 
-        popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]))
-        perrs = np.sqrt(np.diag(pcov))
+	else: 
+		popts, pcov = curve_fit(FixedSinkHz, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]))
+		perrs = np.sqrt(np.diag(pcov))
 
-    plabel = fit_label(popts, perrs, ["A", "p", "C"])
+	plabel = fit_label(popts, perrs, ["A", "p", "C"])
 
-    return popts, perrs, plabel, FixedSinkHz
+	return popts, perrs, plabel, FixedSinkHz
 
 ###amplitude to contact 
 def a13(B):
@@ -159,47 +169,86 @@ def a13(B):
 	return abg*(1 - DeltaB/(B-B0))
 
 def Contact_from_amplitude(A, eA, VVA):
-     """
-     from I_d_CCC =  kF / a13kF / pi * ell_d_CCC * a0 * C, rearranged to solve for C
+	"""
+	from I_d_CCC =  kF / a13kF / pi * ell_d_CCC * a0 * C, rearranged to solve for C
 
-     todo: make actually related to contact w/ rabi freq calibration
+	todo: make actually related to contact w/ rabi freq calibration
 
-     """
+	"""
 
-    #  N = data["c5"].max()
-    #  kF =(3*np.pi**2*N)**(1/3)
-    #  a13kF = kF * a13(202.14)
-    #  spin_me = 32/42 # spin matrix element
-    #  ell_d_CCC = spin_me * 42 * np.pi
+	#  N = data["c5"].max()
+	#  kF =(3*np.pi**2*N)**(1/3)
+	#  a13kF = kF * a13(202.14)
+	#  spin_me = 32/42 # spin matrix element
+	#  ell_d_CCC = spin_me * 42 * np.pi
 
-    #  C = A / kF * a13kF * np.pi / ell_d_CCC / a0 
-    #  eC = eA / kF * a13kF * np.pi / ell_d_CCC / a0 
+	#  C = A / kF * a13kF * np.pi / ell_d_CCC / a0 
+	#  eC = eA / kF * a13kF * np.pi / ell_d_CCC / a0 
 
-    #  return C, eC
+	#  return C, eC
 
-     return A/(VVA/10)**2, eA/(VVA/10)**2
+	return A/(VVA/10)**2, eA/(VVA/10)**2
 
 # find data files
 y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 datfiles = glob(f"{runpath}*=*.dat")
 runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be same for all files
+bgfile = glob(f"{runpath}*e.dat")
+
+###Finding bg pts 
+###loading in the full dat file without groupby'ing 
+full_df = pd.read_csv(bgfile[0])
+###choosing the bg pts as 0 VVA pts over the full scan 
+bg_df = full_df[full_df['VVA'] == 0]
+bgxvals = bg_df['cyc']
+###linear fcn to fit the 0VVA pts 
+def linear(x, m, b):
+	return m*x + b
+###fit the bg pts	
+popts_c5, pcov_c5 = curve_fit(linear, bgxvals, bg_df['c5'])
+popts_c9, pcov_c9 = curve_fit(linear, bgxvals, bg_df['c9'])
+
+###plot if you want 
+if plot_bg:
+	fig, ax = plt.subplots(2, sharex=True, figsize=(5,4))
+	ax[0].plot(bgxvals, bg_df['c5'], marker='.')
+	ax[0].plot(bgxvals, linear(bgxvals, *popts_c5), ls='-', marker='')
+
+	ax[1].plot(bgxvals, bg_df['c9'], marker='.')
+	ax[1].plot(bgxvals, linear(bgxvals, *popts_c9), ls='-', marker='')
+
+	ax[0].set(
+		ylabel = 'c5'
+	)
+	ax[1].set(
+		ylabel = 'c9',
+		xlabel = 'cycle'
+	)
+###finding avg bg pt 
+avg_at_zero_c5 = linear(0, *popts_c5)
+avg_at_end_c5 = linear(max(bgxvals), *popts_c5)
+avg_bg_c5 = (avg_at_zero_c5 + avg_at_end_c5)/2	
+
+avg_at_zero_c9 = linear(0, *popts_c9)
+avg_at_end_c9 = linear(max(bgxvals), *popts_c9)
+avg_bg_c9 = (avg_at_zero_c9 + avg_at_end_c9)/2	
 
 # get run attributes
 is_dc = runname.find("khz") < 0 # str.find returns -1 if not in string
 if is_dc:
-    wiggle_freq = 0
-    xlabel = 'Field [G]'
-    print(f'Not a modulation run, calibrating contact at DC')
+	wiggle_freq = 0
+	xlabel = 'Field [G]'
+	print(f'Not a modulation run, calibrating contact at DC')
 else:
-    wiggle_freq = float(runname[:runname.find("khz")].split("_")[-1])
-    xlabel = 'Times [ms]'
+	wiggle_freq = float(runname[:runname.find("khz")].split("_")[-1])
+	xlabel = 'Times [ms]'
 
 i = runname.find("us")
 try:
-    pulse_time = float(runname[i-2:i]) # in us
+	pulse_time = float(runname[i-2:i]) # in us
 except:
-    pulse_time = 20 # default to 20 us if not found
+	pulse_time = 20 # default to 20 us if not found
 
 # fit dimer
 # index is field for DC run and wiggle time for modulated runs!
@@ -210,108 +259,109 @@ df.index.name = xlabel
 valid_results = []
 
 for fpath in datfiles:
-    print(fpath.split("\\")[-1])
-    run_df = pd.read_csv(fpath)
-    data = find_transfer(run_df)
-    # take max to ignore 0 and repeats, assume VVA is same for all data sets
-    VVA = max(run_df["VVA"])
+	print(fpath.split("\\")[-1])
+	run_df = pd.read_csv(fpath)
+	if is_dc:
+		if run_df['Field'][0] in dropped_list:
+			continue
+		index = run_df['Field'][0]
+		title = f'Field: {index} G'
+	else:
+		if run_df[time_column_name][0] in dropped_list:
+			continue
+	data = find_transfer(run_df)
+	# take max to ignore 0 and repeats, assume VVA is same for all data sets
+	VVA = max(run_df["VVA"])
 
-    if is_dc:
-        if run_df['Field'][0] in dropped_list:
-            continue
-        index = run_df['Field'][0]
-        title = f'Field: {index} G'
-    else:
-        if run_df["Wiggle Time"][0] in dropped_list:
-            continue
-        # adjust time to be at centre of pulse
-        index = run_df["Wiggle Time"][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
-        title = f'Wiggle Time: {index:0.2f} ms'
+   
+	# adjust time to be at centre of pulse
+	index = run_df[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
+	title = f'Wiggle Time: {index:0.2f} ms'
 
-    width = 1/pulse_time if fix_width else None
-    popts, perrs, plabel, sinc2 = fit_sinc2(data[["detuning", "c5transfer"]].values, 
-                                                width=width)
-    detuning, c5transfer = data["detuning"], data["c5transfer"]
+	width = 1/pulse_time if fix_width else None
+	popts, perrs, plabel, sinc2 = fit_sinc2(data[["detuning", "c5transfer"]].values, 
+												width=width)
+	detuning, c5transfer = data["detuning"], data["c5transfer"]
 
-    # Save for later plotting
-    valid_results.append({
-        "time":index, 
-        "detuning": detuning,
-        "c5transfer": c5transfer,
-        "sinc2": sinc2,
-        "popts": popts,
-        "perrs":perrs,
-        "plabel": plabel,
-        "title": title,
-        "residuals": c5transfer - sinc2(detuning, *popts),
-        "predicted": sinc2(detuning, *popts)
-    })
+	# Save for later plotting
+	valid_results.append({
+		"time":index, 
+		"detuning": detuning,
+		"c5transfer": c5transfer,
+		"sinc2": sinc2,
+		"popts": popts,
+		"perrs":perrs,
+		"plabel": plabel,
+		"title": title,
+		"residuals": c5transfer - sinc2(detuning, *popts),
+		"predicted": sinc2(detuning, *popts)
+	})
 
-    if popts[0] > amp_cutoff: 
-        # C from amplitude
-        contact = Contact_from_amplitude(popts[0], perrs[0], VVA)
-        # propagate error from bg to fitted amplitude error
-        # how do uncertainties work??
-        # if avg_dimer_spec != True:
-        #     perrs[0]  = np.sqrt(np.mean(data.ec5bg/data.c5bg)**2 + (perrs/popts)[0]**2) * popts[0]
-        df.loc[index] = np.concatenate([popts, perrs, contact]) # lists should be concatenated in order
-    else:
-         dropped_list.append(index)
-        
+	if popts[0] > amp_cutoff: 
+		# C from amplitude
+		contact = Contact_from_amplitude(popts[0], perrs[0], VVA)
+		# propagate error from bg to fitted amplitude error
+		# how do uncertainties work??
+		# if avg_dimer_spec != True:
+		#     perrs[0]  = np.sqrt(np.mean(data.ec5bg/data.c5bg)**2 + (perrs/popts)[0]**2) * popts[0]
+		df.loc[index] = np.concatenate([popts, perrs, contact]) # lists should be concatenated in order
+	else:
+		 dropped_list.append(index)
+		
 # field_df.dropna(how='all').to_csv(runpath + f'DC_field_cal.csv',  index=None, sep=',')      
 
 ###plot all the dimer fits on one multi grid plot
 if show_dimer_plot and valid_results:
-    num_plots = len(valid_results)
-    cols = 3
-    rows = int(np.ceil(num_plots / cols))
+	num_plots = len(valid_results)
+	cols = 3
+	rows = int(np.ceil(num_plots / cols))
 
-    fig = plt.figure(figsize=(4 * cols, 3 * rows))
-    outer = gridspec.GridSpec(rows, cols, wspace=0.3, hspace=0.5)
+	fig = plt.figure(figsize=(4 * cols, 3 * rows))
+	outer = gridspec.GridSpec(rows, cols, wspace=0.3, hspace=0.5)
 
-    for i, result in enumerate(valid_results):
-        row = i // cols
-        col = i % cols
+	for i, result in enumerate(valid_results):
+		row = i // cols
+		col = i % cols
 
-        # inner grid for each panel (main + residual)
-        inner = gridspec.GridSpecFromSubplotSpec(
-            2, 1, subplot_spec=outer[row, col],
-            height_ratios=[3, 1], hspace=0.05  
-        )
+		# inner grid for each panel (main + residual)
+		inner = gridspec.GridSpecFromSubplotSpec(
+			2, 1, subplot_spec=outer[row, col],
+			height_ratios=[3, 1], hspace=0.05  
+		)
 
-        main_ax = fig.add_subplot(inner[0])
-        resid_ax = fig.add_subplot(inner[1], sharex=main_ax)
+		main_ax = fig.add_subplot(inner[0])
+		resid_ax = fig.add_subplot(inner[1], sharex=main_ax)
 
-        # Main plot
-        xs = np.linspace(max(result["detuning"]), min(result["detuning"]), 100)
-        main_ax.plot(xs, result["sinc2"](xs, *result["popts"]), ls="-", marker="", label=result["plabel"], color='deeppink')
-        main_ax.plot(result["detuning"], result["c5transfer"], marker='o', ls='None', color='orchid')
-        main_ax.set_title(result["title"], fontsize=10)
-        main_ax.legend(fontsize=6)
-        main_ax.set_ylabel("transfer")
-        main_ax.tick_params(labelbottom=False)  # Hide x labels for main plot
+		# Main plot
+		xs = np.linspace(max(result["detuning"]), min(result["detuning"]), 100)
+		main_ax.plot(xs, result["sinc2"](xs, *result["popts"]), ls="-", marker="", label=result["plabel"], color='deeppink')
+		main_ax.plot(result["detuning"], result["c5transfer"], marker='o', ls='None', color='orchid')
+		main_ax.set_title(result["title"], fontsize=10)
+		main_ax.legend(fontsize=6)
+		main_ax.set_ylabel("transfer")
+		main_ax.tick_params(labelbottom=False)  # Hide x labels for main plot
 
-        # Residuals
-        resid_ax.plot(result["detuning"], result["residuals"], color='mediumvioletred', marker='.', linestyle='None')
-        resid_ax.axhline(0, color="lightgrey", linestyle="--", marker="")
-        resid_ax.set_xlabel("detuning (MHz)")
-        resid_ax.set_ylabel("resid.")
-        resid_ax.tick_params(labelsize=8)
+		# Residuals
+		resid_ax.plot(result["detuning"], result["residuals"], color='mediumvioletred', marker='.', linestyle='None')
+		resid_ax.axhline(0, color="lightgrey", linestyle="--", marker="")
+		resid_ax.set_xlabel("detuning (MHz)")
+		resid_ax.set_ylabel("resid.")
+		resid_ax.tick_params(labelsize=8)
 
-    fig.suptitle(run, y=0.93)
-    plt.tight_layout()
-    plt.show()
+	fig.suptitle(run, y=0.93)
+	plt.tight_layout()
+	plt.show()
 
 ### plot the disitrubtion of fitted widths if not fixed
 if valid_results and not fix_width:
-    fig, ax = plt.subplots(figsize=(3, 2))
-    ax.set(ylabel=r'Fit width $\sigma$ [kHz]',
-           xlabel = 'Wiggle Time [ms]')
-    for result in valid_results:
-        ax.errorbar(result['time'], result['popts'][2]*1000, result['perrs'][2]*1000, color='crimson', marker='o', ls='')
+	fig, ax = plt.subplots(figsize=(3, 2))
+	ax.set(ylabel=r'Fit width $\sigma$ [kHz]',
+		   xlabel = 'Wiggle Time [ms]')
+	for result in valid_results:
+		ax.errorbar(result['time'], result['popts'][2]*1000, result['perrs'][2]*1000, color='crimson', marker='o', ls='')
 
-    ax.hlines(y=(1/pulse_time)*1000, xmin=valid_results[0]['time'], xmax=valid_results[-1]['time'],color='lightcoral', ls='--')
-    fig.suptitle(run)
+	ax.hlines(y=(1/pulse_time)*1000, xmin=valid_results[0]['time'], xmax=valid_results[-1]['time'],color='lightcoral', ls='--')
+	fig.suptitle(run)
 
 # drop NaN rows from dfs
 df = df.dropna()
@@ -319,204 +369,208 @@ df = df.dropna()
 ###plotting
 
 if is_dc:
-    # plot without residuals
-    fig, axs = plt.subplots(3,1, sharex=True, figsize=(8,6))
+	# plot without residuals
+	fig, axs = plt.subplots(3,1, sharex=True, figsize=(8,6))
 
-    axs[0].errorbar(df.index, df.A, yerr=df.eA)
-    axs[0].set_ylabel("transfer")
-    axs[1].errorbar(df.index, df.x0, 
-                    yerr=df.ex0
-                    )
-    axs[1].set_ylabel("f0 [MHz]")
-    axs[2].errorbar(df.index, df.C,
-                    yerr=df.eC
-                    )
-    axs[2].set(
-        ylabel = r'transf/VVA$^2$',
-        xlabel = xlabel
-    )
-    axs[0].set_title(f"{run}: {pulse_time}us Pulse, {VVA} VVA")
+	axs[0].errorbar(df.index, df.A, yerr=df.eA)
+	axs[0].set_ylabel("transfer")
+	axs[1].errorbar(df.index, df.x0, 
+					yerr=df.ex0
+					)
+	axs[1].set_ylabel("f0 [MHz]")
+	axs[2].errorbar(df.index, df.C,
+					yerr=df.eC
+					)
+	axs[2].set(
+		ylabel = r'transf/VVA$^2$',
+		xlabel = xlabel
+	)
+	axs[0].set_title(f"{run}: {pulse_time}us Pulse, {VVA} VVA")
 
 else:
 
-    fig = plt.figure(figsize=(8, 10))
-    # outer grid for each variable
-    outer = gridspec.GridSpec(3, 1, hspace=0.2)
+	fig = plt.figure(figsize=(8, 10))
+	# outer grid for each variable
+	outer = gridspec.GridSpec(3, 1, hspace=0.2)
 
-    # inner grid for each panel (main + residual)
-    gs = [gridspec.GridSpecFromSubplotSpec(
-                2, 1, subplot_spec=out_gs,
-                height_ratios=[3, 1], hspace=0.05  
-                ) for i, out_gs in enumerate(outer)]
-    
-    # gs = gridspec.GridSpec(6, 1, height_ratios=[3,1, 3,1, 3,1], hspace=0.06)
+	# inner grid for each panel (main + residual)
+	gs = [gridspec.GridSpecFromSubplotSpec(
+				2, 1, subplot_spec=out_gs,
+				height_ratios=[3, 1], hspace=0.05  
+				) for i, out_gs in enumerate(outer)]
+	
+	# gs = gridspec.GridSpec(6, 1, height_ratios=[3,1, 3,1, 3,1], hspace=0.06)
 
-    # peak transfer
-    ax0 = fig.add_subplot(gs[0][0])
-    ax0.errorbar(df.index, df.A, yerr=df.eA)
-    ax0.set_ylabel("peak transfer")
-    ax0.tick_params(labelbottom=False)
+	# peak transfer
+	ax0 = fig.add_subplot(gs[0][0])
+	ax0.errorbar(df.index, df.A, yerr=df.eA)
+	ax0.set_ylabel("peak transfer")
+	ax0.tick_params(labelbottom=False)
 
-    # f0
-    ax1 = fig.add_subplot(gs[1][0])
-    ax1.errorbar(df.index, df.x0, yerr=df.ex0 )
-    ax1.set_ylabel("f0 [MHz]")
-    ax1.tick_params(labelbottom=False)
+	# f0
+	ax1 = fig.add_subplot(gs[1][0])
+	ax1.errorbar(df.index, df.x0, yerr=df.ex0 )
+	ax1.set_ylabel("f0 [MHz]")
+	ax1.tick_params(labelbottom=False)
 
-    # contact
-    ax2 = fig.add_subplot(gs[2][0])
-    ax2.errorbar(df.index, df.C,
-                    yerr=df.eC )
-    ax2.set(ylabel = r'transf/VVA$^2$')
-    ax2.tick_params(labelbottom=False)
+	# contact
+	ax2 = fig.add_subplot(gs[2][0])
+	ax2.errorbar(df.index, df.C,
+					yerr=df.eC )
+	ax2.set(ylabel = r'transf/VVA$^2$')
+	ax2.tick_params(labelbottom=False)
 
-    # plot fits to sine
-    ###Sine fits for the wiggle data pts 
-    # sine should be same for both data
-    poptsA, perrsA, plabelA, sine = fit_fixedSinkHz(df.index, df.A, wiggle_freq, df.eA)
-    poptsf0, perrsf0, plabelf0, __ = fit_fixedSinkHz(df.index, df.x0, wiggle_freq, df.ex0)
-    poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df.index, df.C, wiggle_freq, df.eC)
+	# plot fits to sine
+	###Sine fits for the wiggle data pts 
+	# sine should be same for both data
+	poptsA, perrsA, plabelA, sine = fit_fixedSinkHz(df.index, df.A, wiggle_freq, df.eA)
+	poptsf0, perrsf0, plabelf0, __ = fit_fixedSinkHz(df.index, df.x0, wiggle_freq, df.ex0)
+	poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df.index, df.C, wiggle_freq, df.eC)
 
-    ###plotting sin fit to 1/A and f0 and C 
-    ts = np.linspace(min(df.index), max(df.index), 100)
-    ax0.plot(ts, sine(ts, *poptsA), ls="-", marker="", 
-                label=plabelA
-                )
-    fit1 = ax1.plot(ts, sine(ts, *poptsf0), ls="-", marker="", label=plabelf0)
-    ax2.plot(ts, sine_C(ts, *poptsC), ls="-", marker="", label=plabelC)
+	###plotting sin fit to 1/A and f0 and C 
+	ts = np.linspace(min(df.index), max(df.index), 100)
+	ax0.plot(ts, sine(ts, *poptsA), ls="-", marker="", 
+				label=plabelA
+				)
+	fit1 = ax1.plot(ts, sine(ts, *poptsf0), ls="-", marker="", label=plabelf0)
+	ax2.plot(ts, sine_C(ts, *poptsC), ls="-", marker="", label=plabelC)
 
-    ###plotting the Field wiggle in B (G)
-    B_phase = field_cal['B_phase'].values[0]
-    eB_phase = field_cal['e_B_phase'].values[0]
-    field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
-    Bs = sine(ts, *field_params)
+	###plotting the Field wiggle in B (G)
+	B_phase = field_cal['B_phase'].values[0]
+	eB_phase = field_cal['e_B_phase'].values[0]
+	field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
+	Bs = sine(ts, *field_params)
 
-    B_label = fit_label(field_cal[['B_amp', 'B_phase', 'B_offset']].values[0], 
-                        field_cal[['e_B_amp', 'e_B_phase', 'e_B_offset']].values[0],
-                        ["A", "p", "C"])
-    ax1_B = ax1.twinx()
-    B1 = ax1_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
+	B_label = fit_label(field_cal[['B_amp', 'B_phase', 'B_offset']].values[0], 
+						field_cal[['e_B_amp', 'e_B_phase', 'e_B_offset']].values[0],
+						["A", "p", "C"])
+	ax1_B = ax1.twinx()
+	B1 = ax1_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
 
-    ax1_B.set_ylabel("B(cal) [G]")
+	ax1_B.set_ylabel("B(cal) [G]")
 
-    ax2_B = ax2.twinx()
-    ax2_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
-    ax2_B.set_ylabel("B(cal) [G]")
+	ax2_B = ax2.twinx()
+	ax2_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
+	ax2_B.set_ylabel("B(cal) [G]")
 
-    # flip y axis instead of phase shifting
-    ax1_B.invert_yaxis()
-    ax2_B.invert_yaxis()
+	# flip y axis instead of phase shifting
+	ax1_B.invert_yaxis()
+	ax2_B.invert_yaxis()
 
-    fig.legend(B1, [B_label], loc='upper center', bbox_to_anchor=(1, 0.85), title="field fit")
+	fig.legend(B1, [B_label], loc='upper center', bbox_to_anchor=(1, 0.85), title="field fit")
 
-    ###plotting residuals
-    resid0 = fig.add_subplot(gs[0][1], sharex=ax0)
-    resid1 = fig.add_subplot(gs[1][1], sharex=ax1)
-    resid2 = fig.add_subplot(gs[2][1], sharex=ax2)
+	###plotting residuals
+	resid0 = fig.add_subplot(gs[0][1], sharex=ax0)
+	resid1 = fig.add_subplot(gs[1][1], sharex=ax1)
+	resid2 = fig.add_subplot(gs[2][1], sharex=ax2)
 
-    resid0.axhline(0, ls="--", color="lightgrey", marker="")
-    resid1.axhline(0, ls="--", color="lightgrey", marker="")
-    resid2.axhline(0, ls="--", color="lightgrey", marker="")
+	resid0.axhline(0, ls="--", color="lightgrey", marker="")
+	resid1.axhline(0, ls="--", color="lightgrey", marker="")
+	resid2.axhline(0, ls="--", color="lightgrey", marker="")
 
-    resid0.errorbar(df.index, df.A-sine(df.index, *poptsA), yerr=df.eA, color='mediumvioletred')
-    resid1.errorbar(df.index, df.x0-sine(df.index, *poptsf0), yerr=df.ex0, color='mediumvioletred')
-    resid2.errorbar(df.index, df.C-sine(df.index, *poptsC), df.eC, color='mediumvioletred')
+	resid0.errorbar(df.index, df.A-sine(df.index, *poptsA), yerr=df.eA, color='mediumvioletred')
+	resid1.errorbar(df.index, df.x0-sine(df.index, *poptsf0), yerr=df.ex0, color='mediumvioletred')
+	resid2.errorbar(df.index, df.C-sine(df.index, *poptsC), df.eC, color='mediumvioletred')
 
-    resid0.set_xlabel("time (ms)")
-    resid1.set_xlabel("time (ms)")
-    resid2.set_xlabel("time (ms)")
+	resid0.set_xlabel("time (ms)")
+	resid1.set_xlabel("time (ms)")
+	resid2.set_xlabel("time (ms)")
 
-    if plot_dc:
-        # plot DC cal'd field/amp values
-        B_DC = DC_cal_csv["Field"]
-        imax, imin, imean = np.argmin(np.abs(Bs-B_DC[0])), np.argmin(np.abs(Bs-B_DC[1])), np.argmin(np.abs(Bs-B_DC[2]))
-        t_DC = ts[[imax, imin, imean]] - 1/(2*wiggle_freq) # shift field phase by pi 
-        # plot DC f0
-        ax1.errorbar(t_DC, DC_cal_csv["x0"].values, DC_cal_csv["ex0"].values, color='navy', label='DC Field')
-        # plot DC amplitude
-        C_DC = Contact_from_amplitude(DC_cal_csv["A"].values, DC_cal_csv["eA"].values, DC_VVA)
-        ax2.errorbar(t_DC, C_DC[0], C_DC[1], color='navy', label='DC Field')
+	if plot_dc:
+		# plot DC cal'd field/amp values
+		B_DC = DC_cal_csv["Field"]
+		imax, imin, imean = np.argmin(np.abs(Bs-B_DC[0])), np.argmin(np.abs(Bs-B_DC[1])), np.argmin(np.abs(Bs-B_DC[2]))
+		t_DC = ts[[imax, imin, imean]] - 1/(2*wiggle_freq) # shift field phase by pi 
+		# plot DC f0
+		ax1.errorbar(t_DC, DC_cal_csv["x0"].values, DC_cal_csv["ex0"].values, color='navy', label='DC Field')
+		# plot DC amplitude
+		C_DC = Contact_from_amplitude(DC_cal_csv["A"].values, DC_cal_csv["eA"].values, DC_VVA)
+		ax2.errorbar(t_DC, C_DC[0], C_DC[1], color='navy', label='DC Field')
 
-        # ###finding max, min, middle points of f0 fit
-        # maxy = np.argmax(sine(ts, *poptsf0))
-        # maxx = ts[maxy]
-        # miny = np.argmin(sine(ts, *poptsf0))
-        # minx = ts[miny]
+		# ###finding max, min, middle points of f0 fit
+		# maxy = np.argmax(sine(ts, *poptsf0))
+		# maxx = ts[maxy]
+		# miny = np.argmin(sine(ts, *poptsf0))
+		# minx = ts[miny]
 
-        # #add this to DC cal csv 
-        # DC_cal_csv['time'] = [maxx, (maxx+minx)/2, minx]
-        # #putting on plot
-        # axs[1].plot(DC_cal_csv['time']+0.083,DC_cal_csv['x0'], color='navy', label='DC Field')
-        # # axs[0].plot(DC_cal_csv['time']+0.083,DC_cal_csv['A'], color='navy', label='DC Field')
-        # #the time is being shifted overy by 1/2 a period, unsure why? 
+		# #add this to DC cal csv 
+		# DC_cal_csv['time'] = [maxx, (maxx+minx)/2, minx]
+		# #putting on plot
+		# axs[1].plot(DC_cal_csv['time']+0.083,DC_cal_csv['x0'], color='navy', label='DC Field')
+		# # axs[0].plot(DC_cal_csv['time']+0.083,DC_cal_csv['A'], color='navy', label='DC Field')
+		# #the time is being shifted overy by 1/2 a period, unsure why? 
 
-    ax0.legend(loc=0)
-    ax1.legend(loc=0)
-    ax2.legend(loc=0)
+	ax0.legend(loc=0)
+	ax1.legend(loc=0)
+	ax2.legend(loc=0)
 
-    # reorder axes so legend is not covered by B line
-    ax1.set_zorder(2)
-    ax1.patch.set_visible(False)
-    ax2.set_zorder(2)
-    ax2.patch.set_visible(False)
+	# reorder axes so legend is not covered by B line
+	ax1.set_zorder(2)
+	ax1.patch.set_visible(False)
+	ax2.set_zorder(2)
+	ax2.patch.set_visible(False)
 
-    ###Finding the phase shift by subtracting various fits
-    # add pi offset to B field to compare phase shift
-    phases = np.array([poptsA[1] - poptsf0[1],
-            poptsf0[1] - (B_phase + np.pi),
-            poptsC[1] - (B_phase + np.pi)
-    ])
-    ephases = np.sqrt([
-        (perrsA[1]**2 + perrsf0[1]**2),
-        (perrsf0[1]**2 + eB_phase**2),
-        (perrsC[1]**2 + eB_phase**2)
-        ])
+	###Finding the phase shift by subtracting various fits
+	# add pi offset to B field to compare phase shift
+	phases = np.array([poptsA[1] - poptsf0[1],
+			poptsf0[1] - (B_phase + np.pi),
+			poptsC[1] - (B_phase + np.pi)
+	])
+	ephases = np.sqrt([
+		(perrsA[1]**2 + perrsf0[1]**2),
+		(perrsf0[1]**2 + eB_phase**2),
+		(perrsC[1]**2 + eB_phase**2)
+		])
 
-    # convert angles from [-2pi, 2pi] to between [-pi, pi]
-    for i, p in enumerate(phases):
-        # prop error?
-        phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
+	# convert angles from [-2pi, 2pi] to between [-pi, pi]
+	for i, p in enumerate(phases):
+		# prop error?
+		phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
 
-    try:
-        fits = fit_label(phases, ephases, ["phase shift A-f0", "phase shift f0-B", "phase shift C-B"], 
-                         units = ["", r"+$\pi$", r"+$\pi$"], digits=2)
-    except:
-        # errors not available
-        fits = (f"phase shift A-f0 = {phases[0]:.2f}" 
-                f"\nphase shift f0-B = {phases[1]:.3f}" 
-                f"\nphase shift C-B = {phases[2]:.2f}")
-        
-    fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
-                f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=1.02)
-    
+	try:
+		fits = fit_label(phases, ephases, ["phase shift A-f0", "phase shift f0-B", "phase shift C-B"], 
+						 units = ["", r"+$\pi$", r"+$\pi$"], digits=2)
+	except:
+		# errors not available
+		fits = (f"phase shift A-f0 = {phases[0]:.2f}" 
+				f"\nphase shift f0-B = {phases[1]:.3f}" 
+				f"\nphase shift C-B = {phases[2]:.2f}")
+		
+	fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
+				f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=1.02)
+	
 if Export == True and fix_width == True: # this complains when fix_width is false,  because there are mismatched num of params now
-    csv_path = os.path.join(analysis_folder, f'phase_shift_2025_summary.csv')
-    write_header = not os.path.exists(csv_path)
-    run_id = run
+	csv_path = os.path.join(analysis_folder, f'phase_shift_2025_summary.csv')
+	write_header = not os.path.exists(csv_path)
+	run_id = run
 
-    if os.path.exists(csv_path):
-        existing_df = pd.read_csv(csv_path, index_col=0)
-        already_logged = run_id in existing_df.index
-    else:
-        already_logged = False
-    
-    if not already_logged:
-        csv_df = pd.DataFrame({
-            'Pulse Time (us)': pulse_time,
-            'Modulation Freq (kHz)': wiggle_freq,
-            'Modulation Amp (Vpp)': wiggle_amp,
-            'Phase Shift A-f0 (rad)': phases[0],
-            'Phase Shift A-f0 err (rad)': ephases[0],
-            'Phase Shift f0-B (rad)': phases[1],
-            'Phase Shift f0-B err (rad)': ephases[1],
-            'Phase Shift C-B (rad)': phases[2],
-            'Phase Shift C-B err (rad)': ephases[2],
-            'Dropped Wiggle Times (ms)': str([float(x) for x in dropped_list])
-        }, index=[run_id])  
+	if os.path.exists(csv_path):
+		existing_df = pd.read_csv(csv_path, index_col=0)
+		already_logged = run_id in existing_df.index
+	else:
+		already_logged = False
+	
+	if not already_logged:
+		csv_df = pd.DataFrame({
+			'Pulse Time (us)': pulse_time,
+			'Modulation Freq (kHz)': wiggle_freq,
+			'Modulation Amp (Vpp)': wiggle_amp,
+			'Phase Shift A-f0 (rad)': phases[0],
+			'Phase Shift A-f0 err (rad)': ephases[0],
+			'Phase Shift f0-B (rad)': phases[1],
+			'Phase Shift f0-B err (rad)': ephases[1],
+			'Phase Shift C-B (rad)': phases[2],
+			'Phase Shift C-B err (rad)': ephases[2],
+			'Dropped Wiggle Times (ms)': str([float(x) for x in dropped_list]),
+			'Amplitude of Sin Fit of A': poptsA[0],
+			'Error of Amplitude of Sin Fit of A': perrsA[0],   
+			'Amplitude of Sin Fit of C': poptsC[0],
+			'Error of Amplitude of Sin Fit of C': perrsC[0],
+		}, index=[run_id])  
 
-        csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
-        print(f"✅ Appended run '{run_id}' to {csv_path}")
-    else:
-        print(f"⚠️ Run '{run_id}' already logged. Skipping append.")
+		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
+		print(f"✅ Appended run '{run_id}' to {csv_path}")
+	else:
+		print(f"⚠️ Run '{run_id}' already logged. Skipping append.")
 
 ###need to pi shift C to compare phase shift 

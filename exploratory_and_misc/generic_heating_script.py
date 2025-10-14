@@ -23,7 +23,7 @@ plot = True
 trap_freqs = np.array([146.7, 385.7, 434])*np.sqrt(1.5) # in Hz
 barnu = np.mean(trap_freqs)
 # run name
-runs = [f'2025-10-06_{i}' for i in ['F', 'G']]
+runs = [f'2025-10-06_{i}' for i in ['F', 'G', 'H']]
 df = pd.DataFrame({'run': runs, 'Edot': np.nan, 'e_Edot': np.nan, 
                    'ToTF': np.nan, 'EF': np.nan,
                    'EdotDrude':np.nan})
@@ -86,6 +86,7 @@ for run in runs:
         # Add inset to ax2
         inset1 = inset_axes(ax1, width="30%", height="40%", loc='lower right', borderpad=2.)
         inset1.plot(time_zoom, ToTF_zoom, color="navy")
+        # inset1.plot(line(time_zoom, *popt_T), color="navy", ls='--')
 
         # get y limit, since fit will change it
         ylim0 = ax0.get_ylim()
