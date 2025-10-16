@@ -92,6 +92,7 @@ for i in range(len(ToTFs)):
 	# compute time delays
 	BVT.time_delay = contact_time_delay(BVT.phaseshiftsQcrit, 1/BVT.nus)
 	BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)
+	BVT.rel_amp = 1/(np.sqrt(1+(2*np.pi*BVT.nus*BVT.tau)**2))
 	BVTs.append(BVT)
 
 with open(pickle_file, 'wb') as f:
@@ -118,58 +119,58 @@ colors_dark = ['steelblue', 'orchid', 'palevioletred']
 
 #making 2 subplots 
 for b in range(2):
-    current_ax = ax[b]
-    
-    if b == 0:
-        xlabel = r"$h\nu/k_BT$"	
-        ylabel = rf'$\phi = \arctan(2\pi\omega \tau)$ [rad]'
-    else:
-        xlabel = r"$\nu$ [Hz]"
-        ylabel = ''
+	current_ax = ax[b]
+	
+	if b == 0:
+		xlabel = r"$h\nu/k_BT$"	
+		ylabel = rf'$\phi = \arctan(2\pi\omega \tau)$ [rad]'
+	else:
+		xlabel = r"$\nu$ [Hz]"
+		ylabel = ''
 
-    # Loop over BVTs to plot theory curves
-    for j, BVT in enumerate(BVTs):
-        if b == 0:
-            x_theory = BVT.nus / BVT.T
-        else:
-            x_theory = BVT.nus
+	# Loop over BVTs to plot theory curves
+	for j, BVT in enumerate(BVTs):
+		if b == 0:
+			x_theory = BVT.nus / BVT.T
+		else:
+			x_theory = BVT.nus
 
-        EF_kHz = (BVT.T / BVT.ToTF) / 1e3
-        label2 = f'ToTF={BVT.ToTF}, EF={EF_kHz:.0f} kHz'
+		EF_kHz = (BVT.T / BVT.ToTF) / 1e3
+		label2 = f'ToTF={BVT.ToTF}, EF={EF_kHz:.0f} kHz'
 
-        current_ax.plot(x_theory, BVT.phiLR, ':', color=colors[j], label=label2)
+		current_ax.plot(x_theory, BVT.phiLR, ':', color=colors[j], label=label2)
 
-    # Plot data for current axis
-    for i, (temp, ef_val) in enumerate(zip(templist, EFslist)):
-        if b == 0:
-            x_data = data_2025['Modulation Freq (kHz)'][i] / temp / ef_val
-        else:
-            x_data = data_2025['Modulation Freq (kHz)'][i]*1e3
+	# Plot data for current axis
+	for i, (temp, ef_val) in enumerate(zip(templist, EFslist)):
+		if b == 0:
+			x_data = data_2025['Modulation Freq (kHz)'][i] / temp / ef_val
+		else:
+			x_data = data_2025['Modulation Freq (kHz)'][i]*1e3
 
-        current_ax.errorbar(
-            x_data,
-            data_2025['Phase Shift C-B (rad)'][i],
-            yerr=data_2025['Phase Shift C-B err (rad)'][i],
-            color=colors_light[i],
-            label=f'C-B: {data_2025["Modulation Freq (kHz)"][i]}kHz'
-        )
+		current_ax.errorbar(
+			x_data,
+			data_2025['Phase Shift C-B (rad)'][i],
+			yerr=data_2025['Phase Shift C-B err (rad)'][i],
+			color=colors_light[i],
+			label=f'C-B: {data_2025["Modulation Freq (kHz)"][i]}kHz'
+		)
 
-        current_ax.errorbar(
-            x_data,
-            data_2025['Phase Shift A-f0 (rad)'][i],
-            yerr=data_2025['Phase Shift A-f0 err (rad)'][i],
-            color=colors_dark[i],
-            label=f'A-f0: {data_2025["Modulation Freq (kHz)"][i]}kHz, {data_2025["Unnamed: 0"][i]}'
-        )
+		current_ax.errorbar(
+			x_data,
+			data_2025['Phase Shift A-f0 (rad)'][i],
+			yerr=data_2025['Phase Shift A-f0 err (rad)'][i],
+			color=colors_dark[i],
+			label=f'A-f0: {data_2025["Modulation Freq (kHz)"][i]}kHz, {data_2025["Unnamed: 0"][i]}'
+		)
 	# Set axis properties
-    current_ax.set(
+	current_ax.set(
 	# xlabel=r"Frequency, $\nu/T$", 
 	xlabel=xlabel, 
 	#    ylabel=r"Phase Shift, $\phi$ [rad]",
 	 xscale='log',
 ylabel = ylabel,
 	#    ylim=[0,1]
-    )
+	)
 current_ax.legend(fontsize=8)
 fig.tight_layout()
 
@@ -194,11 +195,13 @@ for b, BVT in enumerate(BVTs):
 		y_C_err = contact_time_delay(data_2025['Phase Shift C-B err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
 
 		axs.errorbar(x, y_C, yerr=y_C_err, 
-			   color=colors_light[i], 
-			   label=f'C-B: {data_2025['Modulation Freq (kHz)'][i]}kHz, {data_2025['Unnamed: 0'][i]}')
+			color=colors_light[i], 
+			label=f"C-B: {data_2025['Modulation Freq (kHz)'][i]}kHz, {data_2025['Unnamed: 0'][i]}"
+			)
 		axs.errorbar(x, y_A, yerr=y_A_err, 
-			   color=colors_dark[i], 
-			   label=f'A-f0: {data_2025['Modulation Freq (kHz)'][i]}kHz')
+			color=colors_dark[i], 
+			label=f"A-f0: {data_2025['Modulation Freq (kHz)'][i]}kHz"
+			)
 
 axs.legend()
 axs.set(
@@ -214,14 +217,61 @@ for (i, temp, EFs) in zip(data_2025.index, templist, EFslist):
 	x = data_2025['Modulation Freq (kHz)'][i]/temp/EFs
 	axs.errorbar(x, data_2025['Amplitude of Sin Fit of A'][i], 
 			  yerr = data_2025['Error of Amplitude of Sin Fit of A'][i],
-			  marker='o', ls='', color=colors_light[i], label=f'A: {data_2025['Modulation Freq (kHz)'][i]}kHz, ')
+			  marker='o', ls='', color=colors_light[i], 
+			  label=f"A: {data_2025['Modulation Freq (kHz)'][i]}kHz, "
+			  )
 	axs.errorbar(x, data_2025['Amplitude of Sin Fit of C'][i], 
 		  yerr = data_2025['Error of Amplitude of Sin Fit of C'][i],
 		  marker='o', ls='', color=colors_dark[i], 
-		  label=f'C: {data_2025['Modulation Freq (kHz)'][i]}kHz, {data_2025['Unnamed: 0'][i]}')
+		  label=f"C: {data_2025['Modulation Freq (kHz)'][i]}kHz, {data_2025['Unnamed: 0'][i]}"
+		  )
 
 axs.set(
 	xlabel=r"$h\nu/k_BT$", 
 	   ylabel=r"Amplitude of Sin Fit",
 )
 axs.legend()
+
+### Relative amplitude plot
+fig, ax=plt.subplots(figsize=(5*subfigs, 4))
+ax.set(
+	xlabel=r"$h\nu/k_BT$", 
+	   ylabel=r"Relative amplitude $|\chi(\omega)|/S$",
+)
+ax.legend()
+
+for b, BVT in enumerate(BVTs):
+	ax.plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=colors[b],
+		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
+		  )
+for (i, temp, EFs) in zip(data_2025.index, templist, EFslist):
+	x = data_2025['Modulation Freq (kHz)'][i]/temp/EFs
+	if data_2025['Modulation Freq (kHz)'][i] != 10.0: # only have data to compare to 10 kHz for now -- 2025-10-15
+		continue
+		# Completely eyeballed guess right now
+		# DC_amp = 0.05
+		# e_DC_amp = 0.01
+		# AC_amp = data_2025['Amplitude of Sin Fit of A'][i]
+		# e_AC_amp = data_2025['Error of Amplitude of Sin Fit of A'][i]
+		# rel_amp = AC_amp/DC_amp
+		# e_rel_amp = np.sqrt((e_AC_amp/AC_amp)**2 + (e_DC_amp/DC_amp)**2)
+		# e_rel_amp_abs = e_rel_amp * rel_amp
+		# ax.errorbar(x, rel_amp, 
+		# 		yerr = e_rel_amp_abs,
+		# 		marker='o', ls='', color=colors_light[i], 
+		# 		label=f"A: {data_2025['Modulation Freq (kHz)'][i]}kHz, cf. static measurements")
+	else :
+		DC_amp = 0.0844
+		e_DC_amp = 0.0136
+		AC_amp = data_2025['Amplitude of Sin Fit of A'][i]
+		e_AC_amp = data_2025['Error of Amplitude of Sin Fit of A'][i]
+		rel_amp = AC_amp/DC_amp
+		e_rel_amp = np.sqrt((e_AC_amp/AC_amp)**2 + (e_DC_amp/DC_amp)**2)
+		e_rel_amp_abs = e_rel_amp * rel_amp
+		ax.errorbar(x, rel_amp, 
+				yerr = e_rel_amp_abs,
+				marker='o', ls='', color=colors_light[i], 
+				label=f"A: {data_2025['Modulation Freq (kHz)'][i]}kHz, cf. static measurements"
+				)
+ax.legend()
+	

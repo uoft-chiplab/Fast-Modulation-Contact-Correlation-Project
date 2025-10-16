@@ -16,25 +16,15 @@ remember to change field_cal run name to match wiggle run for correct B plot!
 # settings for directories, standard packages...
 from preamble import *
 
-run = "2025-10-01_L" # need date and letter
-#"2025-09-24_E" is 6kHz 20us pulse 
-#2025-10-01_L is 10kHz 20us pulse 
+runs = ["2025-09-24_E", "2025-10-01_L"]
+#"2025-09-24_E" is 6kHz 20us pulse 1.8Vpp
+#2025-10-01_L is 10kHz 20us pulse 1.8Vpp
+
+run = runs[1]
 time_column_name = "Wiggle Time"
-#### best way to do this might be to specify drive freq and drive amp of run 
-# and then pull the correct calibration.
-wiggle_amp = 1.8 #Vpp
-wiggle_freq = 6 # kHz
-field_cal_path = os.path.join(root_project, r"FieldWiggleCal\field_cal_summary.csv")
-field_cal_df = pd.read_csv(field_cal_path)
-field_cal = field_cal_df[(field_cal_df['wiggle_freq']==wiggle_freq) & \
-						 (field_cal_df['wiggle_amp']==wiggle_amp)
-							]
-if len(field_cal) > 1:
-	field_cal =field_cal[field_cal['pulse_length']==40]
-# 2025-09-19_D is for 6 kHz 1.8 Vpp
-# 2024-04-05_G is for 10 kHz 1.8 Vpp
-# optionally specify points to exclude
-dropped_list = []
+wiggle_amp = 1.8  # Vpp
+
+dropped_list = [0.29]
 
 DC_cal_path = os.path.join(root_data, r"2025\09 September2025\31September2025\D_DCfield_dimer20us_5VVA_arggghhhh\DC_field_cal.csv")
 DC_cal_csv = pd.read_csv(DC_cal_path)
@@ -78,7 +68,12 @@ def find_transfer(df):
 	else:
 		c5bg, c9bg = bg[['c5', 'c9']].values[0]
 		c5bg_err = 0
+	# c5bg = avg_bg_c5
+	# c9bg = avg_bg_c9
+	# c5bg_err = np.std(bg_df.c5)/len(bg_df.c5)
+
 	print(c5bg, c9bg)
+
 	data = run_data[df["VVA"] != 0].copy()
 	data.loc[data.index, "c5transfer"] = (1-data["c5"]/c5bg)/2 # factor of 2 assumes atom-molecule loss
 	data.loc[data.index, "c5bg"] = c5bg
@@ -196,20 +191,20 @@ datfiles = glob(f"{runpath}*=*.dat")
 runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be same for all files
 bgfile = glob(f"{runpath}*e.dat")
 
-###Finding bg pts 
-###loading in the full dat file without groupby'ing 
+### Finding bg pts 
+### loading in the full dat file without groupby'ing 
 full_df = pd.read_csv(bgfile[0])
-###choosing the bg pts as 0 VVA pts over the full scan 
+### choosing the bg pts as 0 VVA pts over the full scan 
 bg_df = full_df[full_df['VVA'] == 0]
 bgxvals = bg_df['cyc']
-###linear fcn to fit the 0VVA pts 
+### linear fcn to fit the 0VVA pts 
 def linear(x, m, b):
 	return m*x + b
-###fit the bg pts	
+### fit the bg pts	
 popts_c5, pcov_c5 = curve_fit(linear, bgxvals, bg_df['c5'])
 popts_c9, pcov_c9 = curve_fit(linear, bgxvals, bg_df['c9'])
 
-###plot if you want 
+### plot if you want 
 if plot_bg:
 	fig, ax = plt.subplots(2, sharex=True, figsize=(5,4))
 	ax[0].plot(bgxvals, bg_df['c5'], marker='.')
@@ -225,7 +220,7 @@ if plot_bg:
 		ylabel = 'c9',
 		xlabel = 'cycle'
 	)
-###finding avg bg pt 
+### finding avg bg pt 
 avg_at_zero_c5 = linear(0, *popts_c5)
 avg_at_end_c5 = linear(max(bgxvals), *popts_c5)
 avg_bg_c5 = (avg_at_zero_c5 + avg_at_end_c5)/2	
@@ -249,6 +244,20 @@ try:
 	pulse_time = float(runname[i-2:i]) # in us
 except:
 	pulse_time = 20 # default to 20 us if not found
+
+# Load field calibration for comparison
+field_cal_path = os.path.join(root_project, r"FieldWiggleCal\field_cal_summary.csv")
+field_cal_df = pd.read_csv(field_cal_path)
+field_cal = field_cal_df[(field_cal_df['wiggle_freq']==wiggle_freq) & \
+						 (field_cal_df['wiggle_amp']==wiggle_amp)
+							]
+if len(field_cal) > 1:
+	field_cal =field_cal[field_cal['pulse_length']==40]
+field_cal_run = field_cal['run'].values[0]
+print(f'Field cal run being used is {field_cal_run}')
+# 2025-09-19_D is for 6 kHz 1.8 Vpp
+# 2024-04-05_G is for 10 kHz 1.8 Vpp
+# optionally specify points to exclude
 
 # fit dimer
 # index is field for DC run and wiggle time for modulated runs!
@@ -367,6 +376,8 @@ if valid_results and not fix_width:
 df = df.dropna()
 
 ###plotting
+
+# df = df[df.index != 0.3] #manually dropping 0.3 ms pt for now
 
 if is_dc:
 	# plot without residuals
@@ -528,8 +539,10 @@ else:
 		phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
 
 	try:
-		fits = fit_label(phases, ephases, ["phase shift A-f0", "phase shift f0-B", "phase shift C-B"], 
-						 units = ["", r"+$\pi$", r"+$\pi$"], digits=2)
+		fits = fit_label(phases, ephases, [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
+									 r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
+									 r"$\phi$ for $C$ - $B$ cal."], 
+						 units = ["rad", r"rad", r"rad"], digits=2)
 	except:
 		# errors not available
 		fits = (f"phase shift A-f0 = {phases[0]:.2f}" 
@@ -572,5 +585,3 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 		print(f"✅ Appended run '{run_id}' to {csv_path}")
 	else:
 		print(f"⚠️ Run '{run_id}' already logged. Skipping append.")
-
-###need to pi shift C to compare phase shift 
