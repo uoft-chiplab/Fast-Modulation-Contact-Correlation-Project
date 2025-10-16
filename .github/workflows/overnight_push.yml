@@ -1,5 +1,13 @@
+name: Push Repo
 on:
+  push:
   schedule:
     - cron: '0 12,18,00 * * *'
-  push:
+jobs:
+  test_schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - name: push at noon, 6pm, and midnight
+        if: github.event.schedule = '0 12,18,00 * * *'
+        run: echo "push at noon, 6pm, and midnight"
     
