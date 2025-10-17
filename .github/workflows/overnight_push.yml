@@ -3,6 +3,7 @@ name: Push Repo
 on:
   schedule:
     - cron: '0 0,12,18 * * *'  # midnight, noon, 6pm UTC
+  workflow_dispatch: 
 
 jobs:
   commit-changes:
