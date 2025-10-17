@@ -31,7 +31,7 @@ DC_cal_csv = pd.read_csv(DC_cal_path)
 DC_VVA = 5 # update this to pull automatically from csv or path
 
 show_dimer_plot = True
-Export = False
+Export = True
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
@@ -579,6 +579,8 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 			'Error of Amplitude of Sin Fit of A': perrsA[0],   
 			'Amplitude of Sin Fit of C': poptsC[0],
 			'Error of Amplitude of Sin Fit of C': perrsC[0],
+			'Sin Fit of f0':[poptsf0],
+			'Error of Sin Fit of f0':[perrsf0]
 		}, index=[run_id])  
 
 		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
