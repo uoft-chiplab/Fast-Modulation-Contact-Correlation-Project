@@ -190,7 +190,10 @@ ax.yaxis.get_major_formatter().set_useOffset(False)
 # Loop over different pulse times
 fcal_df_list = []
 
-for pulse_length in pulse_lengths:
+color_markers = ['mediumvioletred', 'darkorange', 'gold', 'forestgreen', 'deepskyblue', 'orchid']
+colors_lines = ['orchid', 'orange', 'gold', 'limegreen', 'deepskyblue', 'mediumvioletred']
+
+for i, pulse_length in enumerate(pulse_lengths):
 	fit_df = df[df.pulse_length == pulse_length].reset_index()
 
 	# Extract elements of popt and perr lists into their own columns
@@ -238,28 +241,29 @@ for pulse_length in pulse_lengths:
 	# pd.DataFrame.to_csv(update_df, summ_path, index=False)
 
 	# plot B vs. time
+	if pulse_length == 170.0:
+		fit_df = fit_df[fit_df['time'] != 175.0]
 	xx = np.linspace(np.min(fit_df['time']),
 					np.max(fit_df['time']), num)
-	ax.plot(xx, func(xx, *popt), "--", color="orchid",
+	ax.plot(xx, func(xx, *popt), "--", color=colors_lines[i],
 		 label=f'fit [{popt[0]:.3f}({perr[0]*1e3:.0f}), {popt[1]:.2f}({perr[1]*1e2:.0f}), {popt[2]:.3f}({perr[2]*1e3:.0f})]')
 	# ax.plot(xx, func(xx, *[popt[0], popt[1]+0.8, popt[2]]), "-.", color='orange', label=f'exp response (0.8 rad delay)')
 	ax.errorbar(fit_df['time'],fit_df['B'], 
-				yerr=fit_df['e_B'], fmt='o', label=f'{pulse_length} us', color="mediumvioletred")
+				yerr=fit_df['e_B'], fmt='o', label=f'{pulse_length} us', color=color_markers[i])
 	
 # Combine all new results
 combined_fcal_df = pd.concat(fcal_df_list, ignore_index=True)
 
-# Remove existing rows in the summary that match both 'run' and 'pulse_length'
-# This ensures you're replacing old results for the exact same configurations
-mask = ~summ_df.set_index(['run', 'pulse_length']).index.isin(
-    combined_fcal_df.set_index(['run', 'pulse_length']).index
-)
-summ_df = summ_df[mask]
+# Create index of existing (run, pulse_length) pairs
+existing_keys = set(summ_df.set_index(['run', 'pulse_length']).index)
 
-# Append new results
-updated_df = pd.concat([summ_df, combined_fcal_df], ignore_index=True)
+# Filter new rows to only include ones not already present
+new_rows = combined_fcal_df[~combined_fcal_df.set_index(['run', 'pulse_length']).index.isin(existing_keys)]
 
-# Save final summary CSV
+# Append only the truly new rows
+updated_df = pd.concat([summ_df, new_rows], ignore_index=True)
+
+# Save to CSV
 updated_df.to_csv(summ_path, index=False)
 
 ax.set(title=run[0:10]+ ' ' + str(wiggle_freq) + " kHz, " + str(wiggle_amp) + " Vpp field wiggle cal")

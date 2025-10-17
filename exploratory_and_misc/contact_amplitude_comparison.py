@@ -14,6 +14,7 @@ if module_folder not in sys.path:
 # settings for directories, standard packages...
 from preamble import *
 from scipy.interpolate import interp1d
+from scipy.interpolate import make_smoothing_spline
 ### FLAGS
 TALK = 1
 
@@ -119,7 +120,24 @@ def fit_sinc2(xy, width=False):
 CCC_df = pd.read_csv('ac_s_Eb_vs_B_220-225G.dat',
 	delimiter='\s', header=None)
 CCC_df.columns = ['B', 'E_MHz']
-Eb_to_B = interp1d(CCC_df['E_MHz'], CCC_df['B'])
+Eb_to_B_CCC = interp1d(CCC_df['E_MHz'], CCC_df['B'])
+
+Eb_exp_df = pd.read_excel('Eb_results.xlsx')
+# Eb_exp_df = Eb_exp_df[Eb_exp_df['sat'] != 1]
+Eb_exp_df = Eb_exp_df.sort_values(by=['Eb'])
+# Eb_to_B_exp = interp1d(Eb_exp_df['Eb'], Eb_exp_df['B'])
+Eb_to_B_exp = make_smoothing_spline(Eb_exp_df['Eb'], Eb_exp_df['B'], lam = None)
+
+Ebs = np.linspace(-4.09, -3.9, 100)
+B_interps = [Eb_to_B_CCC(Ebs), Eb_to_B_exp(Ebs)]
+fig, ax = plt.subplots()
+ax.plot(Ebs, B_interps[0], ls='-', marker='', color='chartreuse')
+ax.plot(CCC_df['E_MHz'], CCC_df['B'], marker='o', color='chartreuse', ls='', label='CCC')
+ax.plot(Ebs, B_interps[1], ls='-', marker='',color='crimson')
+ax.plot(Eb_exp_df['Eb'], Eb_exp_df['B'], label='Exp')
+ax.set(xlabel='Eb [MHz]', ylabel='B [G]', xlim=[-4.1, -3.8], ylim=[201, 203])
+ax.legend()
+
 
 valid_results = []
 # analysis loop
@@ -143,7 +161,7 @@ for run in runs:
 	width = 1/pulse_time 
 	popts, perrs, plabel, sinc2 = fit_sinc2(data[["detuning", "c5transfer"]].values, 
 												width=width)
-	B_from_f0 = Eb_to_B(popts[1])
+	B_from_f0 = [Eb_to_B_CCC(popts[1]), Eb_to_B_exp(popts[1])]
 
 	if run == '2025-10-15_L':
 		data = data[data['c5transfer'] != max(data['c5transfer'])]
@@ -152,7 +170,8 @@ for run in runs:
 		xs = np.linspace(data['detuning'].min(), data['detuning'].max(), 100)
 		ax.plot(data['detuning'], data['c5transfer'])
 		ax.plot(xs, sinc2(xs, *popts), '-', color='plum')
-		ax.set(xlabel='detuning [MHz]', ylabel=r'$\alpha_\mathrm{transfer}$', title=f'{run}, amp={popts[0]:.2f}, x0={popts[1]:.2f}')
+		ax.set(xlabel='detuning [MHz]', ylabel=r'$\alpha_\mathrm{transfer}$',
+		  title=f'{run}, amp={popts[0]:.3f}({round(perrs[0]*1000):d}), x0={popts[1]:.3f}({round(perrs[1]*1000):d})')
 
 	# Save for later plotting
 	valid_results.append({
@@ -168,10 +187,12 @@ for run in runs:
 
 # check if B the scan was supposed to be taken at matches B from f0
 fig, ax = plt.subplots()
+CCC_or_Exp = 0 # 0 chooses CCC, 1 chooses Exp
+ylabel_suf = '(CCC)' if CCC_or_Exp == 0 else '(Exp)'
 ax.set(
 	# xlim=[202, 202.5], 
-	   xlabel='Bfield from field cal', 
-	   ylabel='Bfield from peak f0')
+	   xlabel='Bfield from field cal ', 
+	   ylabel='Bfield from peak f0' +ylabel_suf)
 ax.locator_params(axis='x', nbins=5)
 
 Bfield = [result['Bfield'] for result in valid_results]
@@ -183,10 +204,11 @@ label = '2025-10-03'
 label2 = '2025-10-15 cold' 
 label3 = '2025-10-15 hot'
 
-ax.plot(Bfield[:2], B_from_f0[:2], marker='o', color='dodgerblue', label=label)
-ax.plot(Bfield[2:4], B_from_f0[2:4], marker='o', color='slategrey', label=label2)
-ax.plot(Bfield[4:6], B_from_f0[4:6], marker='o', color='navy', label=label3)
 
+B_from_f0 = np.array(B_from_f0)
+ax.plot(Bfield[:2], B_from_f0[:2,CCC_or_Exp], marker='o', color='dodgerblue', label=label)
+ax.plot(Bfield[2:4], B_from_f0[2:4,CCC_or_Exp], marker='o', color='slategrey', label=label2)
+ax.plot(Bfield[4:6], B_from_f0[4:6,CCC_or_Exp], marker='o', color='navy', label=label3)
 ax.legend() 
 
 fig, ax = plt.subplots()
@@ -197,12 +219,12 @@ ax.errorbar(Bfield[2:4], popts_results[2:4], yerr=perrs_results[2:4], marker='o'
 ax.errorbar(Bfield[4:6], popts_results[4:6], yerr=perrs_results[4:6], marker='o', color='navy', label=label3)
 ax.legend()
 
-DC_alpha_amplitude = (valid_results[1]['popts'][0] - valid_results[0]['popts'][0])/2 # factor of 2 is because comparison is to AC amplitude which is half the peak-to-peak
+DC_alpha_amplitude = (valid_results[2]['popts'][0] - valid_results[3]['popts'][0])/2 # factor of 2 is because comparison is to AC amplitude which is half the peak-to-peak
 e_DC_alpha_amplitude = np.sqrt(valid_results[1]['perrs'][0]**2 + valid_results[0]['perrs'][0]**2)
 ax.set(
 	# xlim=[202, 202.3], 
 	ylabel=r'$\alpha_\mathrm{transfer}$', xlabel='B [G]',
-	   title=rf'$\alpha_\mathrm{{amp}} = {DC_alpha_amplitude:.2f}({round(e_DC_alpha_amplitude*100):d})$')
+	   title=rf'$\alpha_\mathrm{{amp}} = {DC_alpha_amplitude:.3f}({round(e_DC_alpha_amplitude*1000):d})$,comparing 2025-10-15 cold')
 
 phase_shift_summary = pd.read_csv(os.path.join(analysis_folder, 'phase_shift_2025_summary.csv'), index_col=0)
 phase_shift_summary = phase_shift_summary[phase_shift_summary.index =='2025-10-01_L']
