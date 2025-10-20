@@ -18,6 +18,23 @@ plt_settings["legend.fontsize"] = 12
 plt.rcParams.update(plt_settings)
 
 
+def linear(x, m, c):
+    return m*x + c
+
+
+# Contact measurements from not sure
+Cs = [0.44, 0.78, 1.27]
+Bs = [202.3, 202.1, 201.9]
+
+c_popt, pcov = curve_fit(linear, Bs, Cs)
+c_perr = np.sqrt(np.diag(pcov))
+
+
+def contact_response(dB):
+    """Contact response function approximation."""
+    return linear(202.14 + dB, *c_popt)
+
+
 def f97(B):
     """Frequency of the 9/2,-9/2 to 9/2,-7/2 transition in kHz at field B (in Gauss)."""
     return FreqMHz(B, 9/2, -9/2, 9/2, -7/2)*1e3  # in kHz
@@ -46,11 +63,6 @@ def B_shift(df, B0=202.14):
     """Convert frequency shift in kHz to magnetic field in Gauss."""
     dB = 0.1  # Small field step in Gauss
     return df * dB / (f97(B0 + dB) - f97(B0 - dB))  # in Gauss
-
-
-def contact_response(dB):
-    """Contact response function approximation."""
-    return 1 - dB
 
 
 def response(detuning, t0, Bt, pulse_width, num=1000):
@@ -84,11 +96,12 @@ def percentile_range(x_vals, y_vals, percentiles=(40, 60)):
     return np.percentile(x_vals, upper, method='inverted_cdf', weights=y_vals) \
             - np.percentile(x_vals, lower, method='inverted_cdf', weights=y_vals)
 
-def fit_to_sinc2(x, y):
+def fit_to_sinc2(x, y, pulse_width):
     """Fit data to a sinc^2 function."""
-    guess_freq_width = 1/0.1  # 1/ms
-    popt, _ = curve_fit(lambda x, x0, pw: sinc2(x-x0, 1/pw), x, y, p0=[0, guess_freq_width])
-    return popt[0]*2, popt[1]
+    guess_freq_width = 1/pulse_width  # 1/ms
+    popt, _ = curve_fit(lambda x, A, x0, pw: A*sinc2(x-x0, 1/pw), x, y, 
+                        p0=[1/guess_freq_width, 0, guess_freq_width])
+    return popt[1]*2, popt[2], popt[0]  # return shift, width, amplitude
 
 
 ###
@@ -111,10 +124,13 @@ def pulse_times(tmin, tmax, num_pulses=5):
     return np.linspace(tmin + 0.1/fmod, tmax - 0.1/fmod, num_pulses)
 
 
-pulse_widths = [0.01, 0.02, 0.04, 0.08, 0.1, 0.12, .16]  # ms
+pulse_widths = [0.01, 0.02, 0.04, 0.08, 0.1]  # ms
+
+# pulse_widths = [0.01]
 
 fit_B_mods = []
 fit_B_offs = []
+fit_B_phases = []
 for pulse_width in pulse_widths:
 
     ###
@@ -136,7 +152,8 @@ for pulse_width in pulse_widths:
     detunings = np.linspace(-5/pulse_width, 5/pulse_width, 2000)  # kHz
     ax0.set(xlim=(detunings[0], detunings[-1]))
     static_response = sinc2(detunings, pulse_width)
-    ax0.plot(detunings, static_response/np.max(static_response), '--', color='k',
+    static_norm = np.trapezoid(static_response, dx=detunings[1]-detunings[0])
+    ax0.plot(detunings, static_response/static_norm, '--', color='k',
                 label='static')
 
     spectra_widths = []
@@ -145,11 +162,12 @@ for pulse_width in pulse_widths:
         dBt = lambda t: field_modulation(t, B0, Bmod, fmod)  # Bfield as function of time.
 
         response_vals = np.array([response(d, time, dBt, pulse_width) for d in detunings])
+        response_norm = np.trapezoid(response_vals, dx=detunings[1]-detunings[0])
+        normalized_response = response_vals/response_norm
 
-        normalized_response = response_vals/np.max(response_vals)
         percentile_width = B_shift(percentile_range(detunings, normalized_response)/2)
 
-        shift, width = fit_to_sinc2(detunings, normalized_response)
+        shift, width, amp = fit_to_sinc2(detunings, normalized_response, pulse_width)
         B_responses.append(B_shift(shift))
         spectra_widths.append(B_shift(width))
 
@@ -157,12 +175,15 @@ for pulse_width in pulse_widths:
                     label='t={:.2f} ms'.format(time))
     ax0.legend()
 
-    popt, pcov = curve_fit(lambda t, Bmod, Boff: Bmod*np.sin(2*np.pi*t*fmod) + Boff, pulse_centres, B_responses, p0=[Bmod, 0])
+    popt, pcov = curve_fit(lambda t, Bmod, Boff, phi: Bmod*np.sin(2*np.pi*t*fmod + phi) + Boff, 
+                           pulse_centres, B_responses, p0=[Bmod, 0, 0])
     perr = np.sqrt(np.diag(pcov))
-    print("Fitted parameters: Bmod={:.4f}({:.0f}), Boff={:.4f}({:.0f})".format(popt[0], perr[0]*1e4, popt[1], perr[1]*1e4))
+    print("Fitted parameters: Bmod={:.4f}({:.0f}), Boff={:.4f}({:.0f}), phi={:.4f}({:.0f})".format(popt[0], 
+                                            perr[0]*1e4, popt[1], perr[1]*1e4, popt[2], perr[2]*1e4))
     fit_B_mods.append(popt[0])
     fit_B_offs.append(popt[1])
-    fit_B_oscillation = lambda t: popt[0]*np.sin(2*np.pi*t*fmod) + popt[1]
+    fit_B_phases.append(popt[2])
+    fit_B_oscillation = lambda t: popt[0]*np.sin(2*np.pi*t*fmod + popt[2]) + popt[1]
 
     ### Plot Field modulation and pulse sequence
     ax1 = fig.add_subplot(gs[0, 1])
