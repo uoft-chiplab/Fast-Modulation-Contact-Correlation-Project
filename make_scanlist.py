@@ -16,13 +16,14 @@ def generate_spectra_scanlist(trf, f0, VVA, n_peak, n_wings, n_bg, max_wings_fre
 	   trf - time of the pulse in us
 	   f0 - frequency centre of the spectra in MHz detuning (i.e: 4)
 	   n_peak - number of points to sample in peak
-	   n_bg - number of points to sample outside Fourier width
+	   n_wings - num points outside Fourier width
+	   n_bg - number of points to sample as bg points
 	   max_bg_freq_in_width - max freq in bg list as multiple of width
 	"""
 	freq_width = 1/trf
 	x0 = 47.2227
 	# sample around peak with arcsin, s.t. you weigh more near the peak.
-	peak_shift_dets = np.arcsin(np.linspace(0, 1, n_peak // 2 + 1, endpoint=False))/(np.pi/2) * freq_width/1
+	peak_shift_dets = np.arcsin(np.linspace(0, 1, n_peak // 2 + 1, endpoint=False))/(np.pi/2) * freq_width
 	# add the flipped shifts, ignoring the centre
 	peak_shift_dets = np.concat([-peak_shift_dets[1:], peak_shift_dets])
 	# actual dets obtained by adding to centre det
@@ -41,7 +42,7 @@ def generate_spectra_scanlist(trf, f0, VVA, n_peak, n_wings, n_bg, max_wings_fre
 	
 	all_freqs = np.append(peak_freqs, wing_freqs)
 	all_dets = np.append(peak_dets, wing_dets)
-	signals = np.ones((n_peak+n_wings+1,3))
+	signals = np.ones((len(all_freqs),3))
 	signals[:,0] = all_freqs
 	signals[:,1] = all_dets
 	signals[:,2] = VVA
@@ -106,24 +107,22 @@ export = True
 # randomizes order freqs in scan list for each time
 randomize = False
 # single shot scan list vs. multiple detunings
-singleshot=True
+singleshot=False
 
 # times
-pulsetime=0.020
+pulsetime=0.010
 t = np.array([0.22,0.25,0.28, 0.31,0.34,0.37, 0.40, 0.43, 0.46, 0.49, 0.52, 0.55, 0.58
-					]) #np.linspace(min(x), max(), 7)
+					])+pulsetime/2 
 f = 10 #kHz
 amp = 1.8 # Vpp
-
-
-
+vva= 9
+reps = 3
 ###expected phase shift based on frequency of mod (and temp etc in theory)
 ###expected time accounting for 1/2 pulse length since the dimer is formed in the middle of the pulsetime
 t_pulse = t - pulsetime/2
 # frequencies
 wait=0.02
-vva=4.5
-n_dimer_repeat = 4
+
 fname = "phase_shift_scanlist.xlsx"
 #saving in E:\Analysis Scripts\Fast-Modulation-Contact-Correlation-Project
 x0 = 47.2227
@@ -215,9 +214,9 @@ scanlist = []
 
 for f0 in predicted_f0s_list:
 	if singleshot == True:
-		scanlist.append(generate_singleshot_scanlist(f0, 5, 15, 5, wings = None, randomize=True))
+		scanlist.append(generate_singleshot_scanlist(f0, vva, 15, 5, wings = None, randomize=True))
 	else:
-		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, 5, 6, 0, 3, 1, reps=2,randomize=True))
+		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 7, 0, 2, 1, reps,randomize=True))
 scanlist = np.array(scanlist)
 SHOW_SCANLIST= True
 if SHOW_SCANLIST:
