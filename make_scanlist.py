@@ -10,35 +10,58 @@ from scipy.interpolate import interp1d
 def sinc2(x, A, x0, sigma, C):
 	return np.abs(A)*(np.sinc((x-x0) / sigma)**2) + C
 
-def generate_spectra_scanlist(trf, f0, n_peak, n_bg, max_bg_freq_in_width=2):
+def generate_spectra_scanlist(trf, f0, VVA, n_peak, n_wings, n_bg, max_wings_freq_in_width=2, reps=1,randomize=True):
 	"""Generates a scanlist for a sinc^2 spectra s.t. the peak is well sampled
 	   and only a few points are sampled beyond the Fourier width.
 	   trf - time of the pulse in us
-	   f0 - frequency centre of the spectra in MHz
+	   f0 - frequency centre of the spectra in MHz detuning (i.e: 4)
 	   n_peak - number of points to sample in peak
 	   n_bg - number of points to sample outside Fourier width
 	   max_bg_freq_in_width - max freq in bg list as multiple of width
 	"""
 	freq_width = 1/trf
-
+	x0 = 47.2227
 	# sample around peak with arcsin, s.t. you weigh more near the peak.
-	peak_shift_freqs = np.arcsin(np.linspace(0, 1, n_peak // 2 + 1, endpoint=False))/(np.pi/2) * freq_width
-
+	peak_shift_dets = np.arcsin(np.linspace(0, 1, n_peak // 2 + 1, endpoint=False))/(np.pi/2) * freq_width/1
 	# add the flipped shifts, ignoring the centre
-	peak_shift_freqs = np.concat([-peak_shift_freqs[1:], peak_shift_freqs])
+	peak_shift_dets = np.concat([-peak_shift_dets[1:], peak_shift_dets])
+	# actual dets obtained by adding to centre det
+	peak_dets =  peak_shift_dets + f0
+	peak_freqs = x0 - peak_dets
+	# sample uniformly in the wings, alternating sides
+	if n_wings > 0:
+		max_wings = max_wings_freq_in_width * freq_width
+		distance_from_centre = np.linspace(max_wings, freq_width, n_wings)
+		distance_from_centre[::2] = -1 * distance_from_centre[::2]
+		wing_dets = distance_from_centre + f0
+		wing_freqs = x0-wing_dets
+	else: 
+		wing_dets = []
+		wing_freqs=[]
+	
+	all_freqs = np.append(peak_freqs, wing_freqs)
+	all_dets = np.append(peak_dets, wing_dets)
+	signals = np.ones((n_peak+n_wings+1,3))
+	signals[:,0] = all_freqs
+	signals[:,1] = all_dets
+	signals[:,2] = VVA
+	
+	# sample zero VVA points
+	bgs = np.ones((n_bg,3))
+	bgs[:,0] = bgs[:,0] * 43
+	bgs[:,1] = bgs[:,1] * (x0-43)
+	bgs[:,2] = bgs[:,2] * 0
+	if randomize:
+		scanlist = np.concat([signals, bgs])
+		np.random.shuffle(scanlist)
+	# TODO: logic to regularly interleave the bg point based on a chosen interval
+	# for _ in range(reps - 1):
+	# 	scanlist.extend(scanlist[:]) # Use a slice to create a copy of the list
+	scanlist = np.vstack([scanlist]*reps)
+	return scanlist
 
-	# actual freqs obtained by adding to centre freq
-	peak_freqs =  peak_shift_freqs + f0
 
-	# sample uniformly in the bg, alternating sides
-	max_bg = max_bg_freq_in_width * freq_width
-	distance_from_centre = np.linspace(max_bg, freq_width, n_bg)
-	distance_from_centre[::2] = -1 * distance_from_centre[::2]
-	bg_freqs = distance_from_centre + f0
-
-	return np.sort(np.concat([peak_freqs, bg_freqs]))
-
-def generate_singleshot_scanlist(f0, VVA, n_peak, n_bg, randomize=True):
+def generate_singleshot_scanlist(f0, VVA, n_peak, n_bg, wings=False, randomize=True):
 	"""Generates a scanlist for a single shot dimer spectrum. 
 		Can randomly distribute bg points or place them at intervals.
 		f0 -- frequency centre of the spectra in MHz (positive) detuning 
@@ -46,23 +69,40 @@ def generate_singleshot_scanlist(f0, VVA, n_peak, n_bg, randomize=True):
 		n_bg -- num points at bg
 	"""
 	x0 = 47.2227 # b to c res at 202.14 G
-	signals = np.ones((n_peak, 3))
-	signals[:,0] = signals[:,0] * (x0-f0) # freq i.e: 43.2
-	signals[:,1] = signals[:,1] * f0 # detuning ~4
-	signals[:,2] = signals[:,2] * VVA # VVA
+	if wings:
+		signals = np.ones((n_peak*3,3))
+		signals[:n_peak,0] = signals[:n_peak,0] * (x0-f0) # freq i.e: 43.2
+		signals[n_peak:2*n_peak,0] = signals[n_peak:2*n_peak,0] * (x0-f0-wings) 
+		signals[2*n_peak:3*n_peak,0] = signals[2*n_peak:3*n_peak,0] * (x0-f0+wings) 
+		signals[:n_peak,1] = signals[:n_peak,1] * f0 # detuning i.e 4
+		signals[n_peak:2*n_peak,1] = signals[n_peak:2*n_peak,1] * (f0-wings) 
+		signals[2*n_peak:3*n_peak,1] = signals[2*n_peak:3*n_peak,1] * (f0+wings) 
+		signals[:,2] = signals[:,2] * VVA # VVA
+		bgs = np.ones((n_bg, 3))
+		bgs[:,0] = bgs[:,0] * 43
+		bgs[:,1] = bgs[:,1] * (x0-43)
+		bgs[:,2] = bgs[:,2] * 0
 
-	bgs = np.ones((n_bg, 3))
-	bgs[:,0] = bgs[:,0] * 43
-	bgs[:,1] = bgs[:,1] * (x0-43)
-	bgs[:,2] = bgs[:,2] * 0
+	else:
+		
+		signals = np.ones((n_peak, 3))
+		signals[:,0] = signals[:,0] * (x0-f0) # freq i.e: 43.2
+		signals[:,1] = signals[:,1] * f0 # detuning ~4
+		signals[:,2] = signals[:,2] * VVA # VVA
+
+		bgs = np.ones((n_bg, 3))
+		bgs[:,0] = bgs[:,0] * 43
+		bgs[:,1] = bgs[:,1] * (x0-43)
+		bgs[:,2] = bgs[:,2] * 0
 
 	if randomize:
 		scanlist = np.concat([signals, bgs])
 		np.random.shuffle(scanlist)
 	# TODO: logic to regularly interleave the bg point based on a chosen interval
+
 	return scanlist
 
-export = False
+export = True
 # randomizes order freqs in scan list for each time
 randomize = False
 # single shot scan list vs. multiple detunings
@@ -70,7 +110,7 @@ singleshot=True
 
 # times
 pulsetime=0.020
-t = np.array([0.3, 0.35, 0.39, 0.43, 0.47, 0.51, 0.55, 0.59, 0.63, 0.67, 0.71
+t = np.array([0.22,0.25,0.28, 0.31,0.34,0.37, 0.40, 0.43, 0.46, 0.49, 0.52, 0.55, 0.58
 					]) #np.linspace(min(x), max(), 7)
 f = 10 #kHz
 amp = 1.8 # Vpp
@@ -130,7 +170,7 @@ def fit_fixedSinkHz(t, y, run_freq, eA, p0=None):
 
 	return popts, perrs, FixedSinkHz
 field_params = field_cal_df[['B_amp', 'B_phase', 'B_offset']].values[0]
-field_params[1] += np.pi # add pi phase shift to comapre to freq
+# field_params[1] += np.pi # add pi phase shift to comapre to freq
 
 popts, pcov, sin = fit_fixedSinkHz(t, np.sin((f*2*np.pi)*t-field_params[1]), f, 0, p0=[0.07,6,202.1])
 
@@ -175,17 +215,20 @@ scanlist = []
 
 for f0 in predicted_f0s_list:
 	if singleshot == True:
-		scanlist.append(generate_singleshot_scanlist(f0, 4.5, 18, 2, True))
+		scanlist.append(generate_singleshot_scanlist(f0, 5, 15, 5, wings = None, randomize=True))
 	else:
-		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, 7, 0, max_bg_freq_in_width=2))
+		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, 5, 6, 0, 3, 1, reps=2,randomize=True))
 scanlist = np.array(scanlist)
 SHOW_SCANLIST= True
 if SHOW_SCANLIST:
 	fig, ax = plt.subplots()
 	for i, fs in enumerate(scanlist):
-		ax.plot(fs, np.ones(len(fs))*(i+1), marker="o", ls="", label=f't={t[i]:.3f} ms, f0={predicted_f0s_list[i]:.3f} MHz')
-	ax.set(xlabel="-Detuning (MHz)", ylabel="Scan #")
-	ax.legend()
+		freqs = fs[:,0]
+		filter_bg = np.where(freqs!=43)
+		filtered_freqs = freqs[filter_bg]
+		ax.plot(filtered_freqs, np.ones(len(filtered_freqs))*(i+1), marker="o", ls="", label=f't={t[i]:.3f} ms, f0={predicted_f0s_list[i]:.3f} MHz')
+	ax.set(xlabel="Freq (MHz)", ylabel="Scan #")
+	# ax.legend()
 ####exporting scan list to excel
 # all_scans = []
 # f0s_repeated = f0slist * n_dimer_repeat
