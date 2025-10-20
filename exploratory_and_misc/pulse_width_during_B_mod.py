@@ -9,13 +9,14 @@ import matplotlib.gridspec as gridspec
 from scipy.optimize import curve_fit
 
 # Custom libraries
-from analysis.library import styles, plt_settings, colors
-from analysis.breit_rabi import FreqMHz, Ehf
+from analysis.library import plt_settings, colors
+from analysis.breit_rabi import FreqMHz
 
 
 plt_settings['font.size'] = 16
 plt_settings["legend.fontsize"] = 12
 plt.rcParams.update(plt_settings)
+
 
 def f97(B):
     """Frequency of the 9/2,-9/2 to 9/2,-7/2 transition in kHz at field B (in Gauss)."""
@@ -47,12 +48,19 @@ def B_shift(df, B0=202.14):
     return df * dB / (f97(B0 + dB) - f97(B0 - dB))  # in Gauss
 
 
+def contact_response(dB):
+    """Contact response function approximation."""
+    return 1 - dB
+
+
 def response(detuning, t0, Bt, pulse_width, num=1000):
     """
-    Function to calculate system response to a pulse at magnetic field B.
-    Replace with actual physics-based calculation as needed.
+    Function to calculate system response to an rf pulse with detuning applied at time
+    t0 during a magnetic field modulation Bt with defined pulse width.
 
     Parameters:
+    detuning : float
+        Detuning of the rf pulse in kHz.
     t : float
         Time corresponding to centre of pulse, in ms.
     Bt : function
@@ -62,13 +70,12 @@ def response(detuning, t0, Bt, pulse_width, num=1000):
     num : int
         Number of points in integration array.
 
-    Returns:
-    response : float
+    Returns: float
         The calculated response.
     """
     t = np.linspace(t0 - pulse_width/2, t0 + pulse_width/2, num)  # Time array around pulse center
     detunings = detuning*np.ones(num) - freq_shift(Bt(t))
-    return np.trapezoid(sinc2(detunings, pulse_width), dx=t[1]-t[0])
+    return np.trapezoid(contact_response(Bt(t))*sinc2(detunings, pulse_width), dx=t[1]-t[0])
 
 
 def percentile_range(x_vals, y_vals, percentiles=(40, 60)):
@@ -87,6 +94,7 @@ def fit_to_sinc2(x, y):
 ###
 ### Parameters
 ###
+
 B0 = 0  # arb.
 Bmod = 0.1  # arb.
 fmod = 10  # kHz
@@ -97,13 +105,16 @@ dB = field_modulation(t, B0, Bmod, fmod)
 hatch_patterns = ['/', '\\', '|']
 delta = 0.001  # Small offset to avoid overlap in hatch patterns
 
+
 def pulse_times(tmin, tmax, num_pulses=5):
     """Generate center times for a series of pulses."""
     return np.linspace(tmin + 0.1/fmod, tmax - 0.1/fmod, num_pulses)
 
-pulse_widths = [0.01, 0.02, 0.04, 0.08, 0.1]  # ms
+
+pulse_widths = [0.01, 0.02, 0.04, 0.08, 0.1, 0.12, .16]  # ms
 
 fit_B_mods = []
+fit_B_offs = []
 for pulse_width in pulse_widths:
 
     ###
@@ -116,12 +127,13 @@ for pulse_width in pulse_widths:
     ax0 = fig.add_subplot(gs[:, 0])
     ax0.set(xlabel='Detuning (kHz)', ylabel='Normalized Response (arb.)')
 
-    pulse_centres = pulse_times(tmin, tmax, num_pulses=7)  # Center times of pulses.
+    pulse_centres = pulse_times(tmin, tmax, num_pulses=9)  # Center times of pulses.
     pulse_amp = min(pulse_widths)/pulse_width  # Normalize pulse amplitude for visibility
 
     patch_width = pulse_width - delta # Adjusted width for visibility
 
-    detunings = np.linspace(-2.5/pulse_width, 2.5/pulse_width, 2000)  # kHz
+    # detunings = np.linspace(-2.5/pulse_width, 2.5/pulse_width, 2000)  # kHz
+    detunings = np.linspace(-5/pulse_width, 5/pulse_width, 2000)  # kHz
     ax0.set(xlim=(detunings[0], detunings[-1]))
     static_response = sinc2(detunings, pulse_width)
     ax0.plot(detunings, static_response/np.max(static_response), '--', color='k',
@@ -145,11 +157,12 @@ for pulse_width in pulse_widths:
                     label='t={:.2f} ms'.format(time))
     ax0.legend()
 
-    popt, pcov = curve_fit(lambda t, Bmod: Bmod*np.sin(2*np.pi*t*fmod), pulse_centres, B_responses, p0=[Bmod])
+    popt, pcov = curve_fit(lambda t, Bmod, Boff: Bmod*np.sin(2*np.pi*t*fmod) + Boff, pulse_centres, B_responses, p0=[Bmod, 0])
     perr = np.sqrt(np.diag(pcov))
-    print("Fitted parameters: Bmod={:.4f}({:.0f})".format(popt[0], perr[0]*1e4))
+    print("Fitted parameters: Bmod={:.4f}({:.0f}), Boff={:.4f}({:.0f})".format(popt[0], perr[0]*1e4, popt[1], perr[1]*1e4))
     fit_B_mods.append(popt[0])
-    fit_B_oscillation = lambda t: popt[0]*np.sin(2*np.pi*t*fmod)
+    fit_B_offs.append(popt[1])
+    fit_B_oscillation = lambda t: popt[0]*np.sin(2*np.pi*t*fmod) + popt[1]
 
     ### Plot Field modulation and pulse sequence
     ax1 = fig.add_subplot(gs[0, 1])
@@ -188,4 +201,3 @@ plt.ylabel('Fit B amplitude/B amp')
 plt.tight_layout()
 # plt.title("Non-interacting, transfer during field modulation",)
 plt.show()
-
