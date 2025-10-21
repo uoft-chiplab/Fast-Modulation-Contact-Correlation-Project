@@ -28,7 +28,7 @@ root_data = os.path.join(root, "Data")
 # Fast-Modulation-Contact-Correlation-Project\FieldWiggleCal
 field_cal_folder = os.path.join(root_project, r"FieldWiggleCal")
 
-# Fast-Modulation-Contact-Correlation-Project\analysis
+# [either GitHub\\chip-lab or E:\\Analysis Scripts]\\analysis
 module_folder = os.path.join(root_analysis, "analysis")
 if module_folder not in sys.path:
 	sys.path.append(module_folder)
