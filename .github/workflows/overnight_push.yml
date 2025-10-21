@@ -1,0 +1,35 @@
+name: Push Repo
+
+on:
+  schedule:
+    - cron: '0 0,12,18 * * *'  # midnight, noon, 6pm UTC
+  workflow_dispatch: 
+
+jobs:
+  commit-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true  # Important for pushing
+
+      - name: Make a file change
+        run: |
+          echo "Updated at $(date -u)" >> auto_update_log.txt
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit changes
+        run: |
+          git add .
+          git commit -m "Automated commit at $(date -u)" || echo "No changes to commit"
+
+      - name: Push changes
+        run: |
+          git push
+
+    

@@ -16,38 +16,31 @@ remember to change field_cal run name to match wiggle run for correct B plot!
 # settings for directories, standard packages...
 from preamble import *
 
-run = "2025-10-01_L" # need date and letter
-#"2025-09-24_E" is 6kHz 20us pulse 
-#2025-10-01_L is 10kHz 20us pulse 
-time_column_name = "Wiggle Time"
-#### best way to do this might be to specify drive freq and drive amp of run 
-# and then pull the correct calibration.
-wiggle_amp = 1.8 #Vpp
-wiggle_freq = 6 # kHz
-field_cal_path = os.path.join(root_project, r"FieldWiggleCal\field_cal_summary.csv")
-field_cal_df = pd.read_csv(field_cal_path)
-field_cal = field_cal_df[(field_cal_df['wiggle_freq']==wiggle_freq) & \
-						 (field_cal_df['wiggle_amp']==wiggle_amp)
-							]
-if len(field_cal) > 1:
-	field_cal =field_cal[field_cal['pulse_length']==40]
-# 2025-09-19_D is for 6 kHz 1.8 Vpp
-# 2024-04-05_G is for 10 kHz 1.8 Vpp
-# optionally specify points to exclude
-dropped_list = []
+runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M"]
+#"2025-09-24_E" is 6kHz 20us pulse 1.8Vpp
+#2025-10-01_L is 10kHz 20us pulse 1.8Vpp
+
+run = runs[5]
+time_column_name = "Wiggle Time" # I think we can set this to be automatic 
+								# by looping through column names and finding which contains "time"
+wiggle_amp = 1.8  # Vpp
+dropped_list = [0.22, 0.25]
 
 DC_cal_path = os.path.join(root_data, r"2025\09 September2025\31September2025\D_DCfield_dimer20us_5VVA_arggghhhh\DC_field_cal.csv")
 DC_cal_csv = pd.read_csv(DC_cal_path)
 DC_VVA = 5 # update this to pull automatically from csv or path
 
 show_dimer_plot = True
-Export = False
+Export =False
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
-
+single_shot = False
+track_bg = True
+def line(x, m, b):
+    return m*x+b
 def f0_to_B(x):
 	"""
 	given a frequency corresponding to the dimer center position get a field out
@@ -63,27 +56,38 @@ def f0_to_B(x):
 
 	return np.interp(x,xs,ys)
 
-def find_transfer(df):
+def find_transfer(df, popts_c5bg=np.array([])):
 	"""
 	given df output from matlab containing atom counts, returns new df containing detuning, 
 	5 and 9 counts, and transfer/loss
+	TODO account for tracking bg over whole scan or not
 	"""
-	run_data = df[["detuning", "VVA", "c5", "c9"]]
+	run_data = df[["cyc","detuning", "VVA", "c5", "c9"]]
 
-	bg = df[df["VVA"] == 0]
-
-	if (len(bg.c5) > 1):
-		c5bg, c9bg = np.mean(bg[["c5", "c9"]], axis=0)
-		c5bg_err = np.std(bg.c5)/len(bg.c5)
+	# assumes popts_c5bg is a np array
+	if popts_c5bg.any():
+		run_data['c5bg'] = line(run_data['cyc'], *popts_c5bg)
+		run_data["c5transfer"] = (1-run_data["c5"]/run_data["c5bg"])/2
+		data = run_data[run_data["VVA"]!=0].copy()
 	else:
-		c5bg, c9bg = bg[['c5', 'c9']].values[0]
-		c5bg_err = 0
-	print(c5bg, c9bg)
-	data = run_data[df["VVA"] != 0].copy()
-	data.loc[data.index, "c5transfer"] = (1-data["c5"]/c5bg)/2 # factor of 2 assumes atom-molecule loss
-	data.loc[data.index, "c5bg"] = c5bg
-	data.loc[data.index, "ec5bg"] = c5bg_err
+		bg = df[df["VVA"] == 0]
 
+		if (len(bg.c5) > 1):
+			c5bg, c9bg = np.mean(bg[["c5", "c9"]], axis=0)
+			c5bg_err = np.std(bg.c5)/len(bg.c5)
+		else:
+			c5bg, c9bg = bg[['c5', 'c9']].values[0]
+			c5bg_err = 0
+		# c5bg = avg_bg_c5
+		# c9bg = avg_bg_c9
+		# c5bg_err = np.std(bg_df.c5)/len(bg_df.c5)
+
+		print(c5bg, c9bg)
+
+		data = run_data[df["VVA"] != 0].copy()
+		data.loc[data.index, "c5transfer"] = (1-data["c5"]/c5bg)/2 # factor of 2 assumes atom-molecule loss
+		data.loc[data.index, "c5bg"] = c5bg
+		data.loc[data.index, "ec5bg"] = c5bg_err
 	return data
 
 def avg_transfer(df):
@@ -111,8 +115,6 @@ def fit_sinc2(xy, width=False):
 	fits xy, input as single array, to sinc2 function. returns fitted params, errors, and label
 
 	if a width is provided, fits sinc with fixed width and 0 background
-
-	TODO: keep background fixed at 0
 	"""
 	f, p0, paramnames = Sinc2(xy)
 
@@ -189,50 +191,39 @@ def Contact_from_amplitude(A, eA, VVA):
 
 	return A/(VVA/10)**2, eA/(VVA/10)**2
 
+
+def bg_over_scan(datfiles, plot=False):
+	# mscan = pd.read_csv(glob(f"{runpath}*.mscan")[0], skiprows=2)
+	df0VVA = pd.DataFrame()
+	for fpath in datfiles:
+		run_df = pd.read_csv(fpath)
+		df0VVA = pd.concat([df0VVA, run_df[run_df["VVA"] == 0]])
+	# sort by cycle to match mscan list
+	df0VVA.sort_values("cyc", inplace=True)
+	# fit trend in c5 vs time to line (cyc # as proxy for time)
+	popts, pcov = curve_fit(line, df0VVA.cyc, df0VVA.c5, [3000, -1])
+	perrs = np.sqrt(np.diag(pcov))
+	### plot if you want 
+	if plot:
+		fig, ax = plt.subplots(figsize=(3,2))
+		ax.plot(df0VVA['cyc'], df0VVA['c5'], marker='.')
+		ax.plot(df0VVA['cyc'], line(df0VVA['cyc'], *popts), ls='-', marker='')
+
+		ax.set(
+			ylabel = 'c5 bg shots',
+			xlabel='cyc'
+		)
+	
+	return popts, perrs
+
 # find data files
 y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 datfiles = glob(f"{runpath}*=*.dat")
 runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be same for all files
-bgfile = glob(f"{runpath}*e.dat")
-
-###Finding bg pts 
-###loading in the full dat file without groupby'ing 
-full_df = pd.read_csv(bgfile[0])
-###choosing the bg pts as 0 VVA pts over the full scan 
-bg_df = full_df[full_df['VVA'] == 0]
-bgxvals = bg_df['cyc']
-###linear fcn to fit the 0VVA pts 
-def linear(x, m, b):
-	return m*x + b
-###fit the bg pts	
-popts_c5, pcov_c5 = curve_fit(linear, bgxvals, bg_df['c5'])
-popts_c9, pcov_c9 = curve_fit(linear, bgxvals, bg_df['c9'])
-
-###plot if you want 
-if plot_bg:
-	fig, ax = plt.subplots(2, sharex=True, figsize=(5,4))
-	ax[0].plot(bgxvals, bg_df['c5'], marker='.')
-	ax[0].plot(bgxvals, linear(bgxvals, *popts_c5), ls='-', marker='')
-
-	ax[1].plot(bgxvals, bg_df['c9'], marker='.')
-	ax[1].plot(bgxvals, linear(bgxvals, *popts_c9), ls='-', marker='')
-
-	ax[0].set(
-		ylabel = 'c5'
-	)
-	ax[1].set(
-		ylabel = 'c9',
-		xlabel = 'cycle'
-	)
-###finding avg bg pt 
-avg_at_zero_c5 = linear(0, *popts_c5)
-avg_at_end_c5 = linear(max(bgxvals), *popts_c5)
-avg_bg_c5 = (avg_at_zero_c5 + avg_at_end_c5)/2	
-
-avg_at_zero_c9 = linear(0, *popts_c9)
-avg_at_end_c9 = linear(max(bgxvals), *popts_c9)
-avg_bg_c9 = (avg_at_zero_c9 + avg_at_end_c9)/2	
+if track_bg:
+	popts_c5bg, perrs_c5bg = bg_over_scan(datfiles, plot=True)
+	
 
 # get run attributes
 is_dc = runname.find("khz") < 0 # str.find returns -1 if not in string
@@ -249,6 +240,19 @@ try:
 	pulse_time = float(runname[i-2:i]) # in us
 except:
 	pulse_time = 20 # default to 20 us if not found
+
+# Load field calibration for comparison
+field_cal_path = os.path.join(root_project, r"FieldWiggleCal\field_cal_summary.csv")
+field_cal_df = pd.read_csv(field_cal_path)
+field_cal = field_cal_df[(field_cal_df['wiggle_freq']==wiggle_freq) & \
+						 (field_cal_df['wiggle_amp']==wiggle_amp)
+							]
+if len(field_cal) > 1:
+	field_cal =field_cal[field_cal['pulse_length']==40]
+field_cal_run = field_cal['run'].values[0]
+print(f'Field cal run being used is {field_cal_run}')
+# 2025-09-19_D is for 6 kHz 1.8 Vpp
+# 2024-04-05_G is for 10 kHz 1.8 Vpp
 
 # fit dimer
 # index is field for DC run and wiggle time for modulated runs!
@@ -269,7 +273,6 @@ for fpath in datfiles:
 	else:
 		if run_df[time_column_name][0] in dropped_list:
 			continue
-	data = find_transfer(run_df)
 	# take max to ignore 0 and repeats, assume VVA is same for all data sets
 	VVA = max(run_df["VVA"])
 
@@ -277,10 +280,24 @@ for fpath in datfiles:
 	# adjust time to be at centre of pulse
 	index = run_df[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
 	title = f'Wiggle Time: {index:0.2f} ms'
-
 	width = 1/pulse_time if fix_width else None
-	popts, perrs, plabel, sinc2 = fit_sinc2(data[["detuning", "c5transfer"]].values, 
-												width=width)
+
+	if not single_shot:
+		data = find_transfer(run_df)
+		popts, perrs, plabel, sinc2 = fit_sinc2(data[["detuning", "c5transfer"]].values, 
+													width=width)
+	else : 
+		data = find_transfer(run_df, popts_c5bg)
+		# to keep structure consistent, fake the popts and perrs
+		popts = [data['c5transfer'].mean(), data['detuning'].mean()]
+		epsilon=1e-9
+		perrs = [data['c5transfer'].sem(), data['detuning'].sem()+epsilon] #epsilon was needed to avoid divide by zero
+		f, p0, paramnames = Sinc2(data[["detuning", "c5transfer"]].values)
+		sinc2 = lambda x, A, x0: f(x, A, x0, width,0)
+		p0 = p0[:2]
+		paramnames = paramnames[:2]
+		plabel = fit_label(popts, perrs, paramnames)
+
 	detuning, c5transfer = data["detuning"], data["c5transfer"]
 
 	# Save for later plotting
@@ -333,7 +350,10 @@ if show_dimer_plot and valid_results:
 		resid_ax = fig.add_subplot(inner[1], sharex=main_ax)
 
 		# Main plot
-		xs = np.linspace(max(result["detuning"]), min(result["detuning"]), 100)
+		if single_shot:
+			xs = np.linspace(result["detuning"].values[0]-2*width, result["detuning"].values[0]+2*width, 100)
+		else:
+			xs = np.linspace(max(result["detuning"]), min(result["detuning"]), 100)
 		main_ax.plot(xs, result["sinc2"](xs, *result["popts"]), ls="-", marker="", label=result["plabel"], color='deeppink')
 		main_ax.plot(result["detuning"], result["c5transfer"], marker='o', ls='None', color='orchid')
 		main_ax.set_title(result["title"], fontsize=10)
@@ -367,6 +387,8 @@ if valid_results and not fix_width:
 df = df.dropna()
 
 ###plotting
+
+# df = df[df.index != 0.3] #manually dropping 0.3 ms pt for now
 
 if is_dc:
 	# plot without residuals
@@ -436,7 +458,7 @@ else:
 	ax2.plot(ts, sine_C(ts, *poptsC), ls="-", marker="", label=plabelC)
 
 	###plotting the Field wiggle in B (G)
-	B_phase = field_cal['B_phase'].values[0]
+	B_phase = field_cal['B_phase'].values[0] 
 	eB_phase = field_cal['e_B_phase'].values[0]
 	field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
 	Bs = sine(ts, *field_params)
@@ -514,7 +536,7 @@ else:
 	# add pi offset to B field to compare phase shift
 	phases = np.array([poptsA[1] - poptsf0[1],
 			poptsf0[1] - (B_phase + np.pi),
-			poptsC[1] - (B_phase + np.pi)
+			poptsC[1] - (B_phase+np.pi)
 	])
 	ephases = np.sqrt([
 		(perrsA[1]**2 + perrsf0[1]**2),
@@ -528,8 +550,10 @@ else:
 		phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
 
 	try:
-		fits = fit_label(phases, ephases, ["phase shift A-f0", "phase shift f0-B", "phase shift C-B"], 
-						 units = ["", r"+$\pi$", r"+$\pi$"], digits=2)
+		fits = fit_label(phases, ephases, [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
+									 r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
+									 r"$\phi$ for $C$ - $B$ cal."], 
+						 units = ["rad", r"rad", r"rad"], digits=2)
 	except:
 		# errors not available
 		fits = (f"phase shift A-f0 = {phases[0]:.2f}" 
@@ -566,11 +590,11 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 			'Error of Amplitude of Sin Fit of A': perrsA[0],   
 			'Amplitude of Sin Fit of C': poptsC[0],
 			'Error of Amplitude of Sin Fit of C': perrsC[0],
+			'Sin Fit of f0':[poptsf0],
+			'Error of Sin Fit of f0':[perrsf0]
 		}, index=[run_id])  
 
 		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
 		print(f"✅ Appended run '{run_id}' to {csv_path}")
 	else:
 		print(f"⚠️ Run '{run_id}' already logged. Skipping append.")
-
-###need to pi shift C to compare phase shift 

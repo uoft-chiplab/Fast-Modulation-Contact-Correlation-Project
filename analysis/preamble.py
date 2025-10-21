@@ -25,6 +25,8 @@ root = os.path.dirname(root_analysis)
 analysis_folder = os.path.join(root_project, r"contact_correlations\phaseshift")
 # Carmen_Santiago\\Data
 root_data = os.path.join(root, "Data")
+# Fast-Modulation-Contact-Correlation-Project\FieldWiggleCal
+field_cal_folder = os.path.join(root_project, r"FieldWiggleCal")
 
 # Fast-Modulation-Contact-Correlation-Project\analysis
 module_folder = os.path.join(root_analysis, "analysis")
