@@ -398,7 +398,7 @@ df = df.dropna()
 # Calculate B field from f0
 df['B'] = f0_to_B_CCC(df['x0'])
 # Estimate error in B from error in f0
-df['eB'] = np.abs(f0_to_B_CCC(df['x0'] + df['ex0']) - f0_to_B(df['x0'] - df['ex0']))/2
+df['eB'] = np.abs(f0_to_B_CCC(df['x0'] + df['ex0']) - f0_to_B_CCC(df['x0'] - df['ex0']))/2
 
 ###plotting
 
