@@ -16,15 +16,15 @@ remember to change field_cal run name to match wiggle run for correct B plot!
 # settings for directories, standard packages...
 from preamble import *
 
-runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O"]
+runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M"]
 #"2025-09-24_E" is 6kHz 20us pulse 1.8Vpp
 #2025-10-01_L is 10kHz 20us pulse 1.8Vpp
 
-run = runs[4]
+run = runs[5]
 time_column_name = "Wiggle Time" # I think we can set this to be automatic 
 								# by looping through column names and finding which contains "time"
 wiggle_amp = 1.8  # Vpp
-dropped_list = []
+dropped_list = [0.22, 0.25]
 
 DC_cal_path = os.path.join(root_data, r"2025\09 September2025\31September2025\D_DCfield_dimer20us_5VVA_arggghhhh\DC_field_cal.csv")
 DC_cal_csv = pd.read_csv(DC_cal_path)
@@ -37,8 +37,8 @@ plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
-single_shot = True
-track_bg = False
+single_shot = False
+track_bg = True
 def line(x, m, b):
     return m*x+b
 def f0_to_B(x):
@@ -207,7 +207,7 @@ def bg_over_scan(datfiles, plot=False):
 	if plot:
 		fig, ax = plt.subplots(figsize=(3,2))
 		ax.plot(df0VVA['cyc'], df0VVA['c5'], marker='.')
-		ax.plot(df0VVA['cyc'], linear(df0VVA['cyc'], *popts_c5bg), ls='-', marker='')
+		ax.plot(df0VVA['cyc'], line(df0VVA['cyc'], *popts), ls='-', marker='')
 
 		ax.set(
 			ylabel = 'c5 bg shots',
