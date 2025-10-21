@@ -1,16 +1,11 @@
-import sys
-sys.path.insert(1, '../')  # Add parent directory to path for custom libraries
-
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import matplotlib.gridspec as gridspec
 
-from scipy.optimize import curve_fit
+# enable custom imports from analysis directory 
+from preamble import *
 
 # Custom libraries
-from analysis.library import plt_settings, colors
-from analysis.breit_rabi import FreqMHz
+from library import plt_settings, colors
+from breit_rabi import FreqMHz
 
 
 plt_settings['font.size'] = 16
