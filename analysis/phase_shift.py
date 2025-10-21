@@ -170,6 +170,9 @@ def a13(B):
 	B0 = 224.2
 	return abg*(1 - DeltaB/(B-B0))
 
+def GammaTilde(transfer, EF, OmegaR, trf):
+	return EF/(hbar * pi * OmegaR**2 * trf) * transfer
+
 def Contact_from_amplitude(A, eA, VVA):
 	"""
 	from I_d_CCC =  kF / a13kF / pi * ell_d_CCC * a0 * C, rearranged to solve for C

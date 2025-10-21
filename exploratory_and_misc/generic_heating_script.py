@@ -39,7 +39,7 @@ for run in runs:
 
     run_df = pd.read_csv(datfiles[0])
     zoom_df = run_df[run_df['time'] < 1] 
-    time_zoom, T_zoom, ToTF_zoom = zoom_df['time'], zoom_df['T']*1e9, zoom_df['ToTF']
+    time_zoom, T_zoom, ToTF_zoom, N_zoom = zoom_df['time'], zoom_df['T']*1e9, zoom_df['ToTF'], zoom_df['N']
 
     # get run params 
     runname = runpath.split("\\")[-2].lower().split("_")[1]
@@ -53,6 +53,9 @@ for run in runs:
     popt_ToTF, pcov_ToTF = curve_fit(line, time_zoom, ToTF_zoom)
     perr_T = np.sqrt(np.diag(pcov_T))
     perr_ToTF = np.sqrt(np.diag(pcov_ToTF))
+
+    popt_N, pcov_N = curve_fit(line, time_zoom, N_zoom)
+    perr_N = np.sqrt(np.diag(pcov_N))
     
     ToTF, EF = run_df[run_df['time'] <=0.1][["ToTF", "EF"]].mean()
     blherggg = BulkViscTrap(ToTF, EF, barnu, np.array([wiggle_freq]))
@@ -63,30 +66,45 @@ for run in runs:
             [popt_ToTF[0], perr_ToTF[0], ToTF, EF, *EdotDrude]
 
     if plot:
-        time, T, ToTF = run_df['time'], run_df['T']*1e9, run_df['ToTF'] # convert T to nK
+        time, T, ToTF, Number = run_df['time'], run_df['T']*1e9, run_df['ToTF'], run_df['N'] # convert T to nK
 
         ## plot data
-        fig, (ax0, ax1) = plt.subplots(2, sharex=True, figsize=(8, 6))
+        fig, (ax0, ax1, ax2) = plt.subplots(3, sharex=True, figsize=(8, 6))
         ax0.plot(time, T, marker='o', ls='', color='magenta')
         ax1.plot(time, ToTF, marker='o', ls='', color='magenta')
+        ax2.plot(time, Number, marker='o', ls='', color='magenta')
 
-        ax1.set(xlabel='Time (ms)', ylabel=r'T/T$_\text{F}$')
+        ax2.set(ylabel='Number', 
+                xlabel = 'Time (ms)')
+        ax1.set(
+            #  xlabel='Time (ms)', 
+                # ylabel=r'T/T$_\text{F}$'
+                ylabel=r'T/T$_F$'
+                )
         ax0.set(ylabel='T (nK)')
+        
 
         # plot averaged points
         run_df_avg = run_df.groupby('time', as_index=False)
         run_df_avg = run_df_avg.mean()[run_df_avg.count()['cyc'] >=2] # only plot points with more than 3 counts
         ax0.plot(run_df_avg['time'], run_df_avg['T']*1e9, marker='o', ls='', color='darkmagenta', label='averaged')
         ax1.plot(run_df_avg['time'], run_df_avg['ToTF'], marker='o', ls='', color='darkmagenta', label='averaged')
+        ax2.plot(run_df_avg['time'], run_df_avg['N'], marker='o', ls='', color='darkmagenta', label='averaged')
 
         ## add inset for 1 ms zoom
         inset0 = inset_axes(ax0, width="30%", height="40%", loc='lower right', borderpad=2.)
         inset0.plot(time_zoom, T_zoom, color="navy")
+        inset0.plot(time_zoom, line(time_zoom, *popt_T), color="cornflowerblue", marker='', ls='--')
 
-        # Add inset to ax2
+        # Add inset to ax1
         inset1 = inset_axes(ax1, width="30%", height="40%", loc='lower right', borderpad=2.)
         inset1.plot(time_zoom, ToTF_zoom, color="navy")
-        # inset1.plot(line(time_zoom, *popt_T), color="navy", ls='--')
+        inset1.plot(time_zoom, line(time_zoom, *popt_ToTF), color="cornflowerblue", marker='', ls='--')
+
+        # Add inset to ax2
+        inset2 = inset_axes(ax2, width="30%", height="40%", loc='lower right', borderpad=2.)
+        inset2.plot(time_zoom, N_zoom, color="navy")
+        inset2.plot(time_zoom, line(time_zoom, *popt_N), color="cornflowerblue", marker='', ls='--')
 
         # get y limit, since fit will change it
         ylim0 = ax0.get_ylim()
@@ -98,16 +116,25 @@ for run in runs:
                     label=fit_label(popt_T, perr_T, ['m', 'b'], units=[' nK/ms', ' nK']))
         ax1.plot(times_fine, line(times_fine, *popt_ToTF), ls='--', marker="", color='navy',
                     label=fit_label(popt_ToTF, perr_ToTF, ['m', 'b'], units=[r' ms$^{-1}$','']))
-
+        ax2.plot(times_fine, line(times_fine, *popt_N), ls='--', marker="", color='navy',
+                    label=fit_label(popt_N, perr_N, ['m', 'b'], units=[r' Number/ms','']))
+        
         ax0.set_ylim(ylim0[0], ylim0[1])
         ax1.set_ylim(ylim1[0], ylim1[1])
         
         # legend
         ax0.legend(loc=2, title="linear fit (t < 1 ms)", framealpha=0.7, title_fontsize='small')
         ax1.legend(loc=2, title="linear fit (t < 1 ms)", framealpha=0.7, title_fontsize='small')
+        ax2.legend(loc=2, title="linear fit (t < 1 ms)", framealpha=0.7, title_fontsize='small')
 
 
         fig.suptitle( f'{run} heating: {wiggle_freq:.0f} kHz, {Vpp} Vpp', y=0.95)
+
+        fig.text(0.95, 0.5, f'The cloud heats \n{popt_T[0]*(1/wiggle_freq):0.1f}nK per period'
+                 f'\nor {popt_ToTF[0]*(1/wiggle_freq):0.3f} ToTF'
+                 f'\nand loses {popt_N[0]*(1/wiggle_freq):0.1f} atoms',
+         ha='left', va='center', fontsize=12,
+         bbox=dict(facecolor='lightgray', edgecolor='black'))
 
 
 # compare the heating rate result to Tilman’s heating rate code
