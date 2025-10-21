@@ -47,10 +47,10 @@ load = False
 ToTFs = np.array(df[df['ToTF'] < 0.35]['ToTF'])
 EFs = np.array(df['EF_kHz']*1000)
 
-ToTFs = [0.3,
+ToTFs = [0.2, 0.25, 0.3,0.35, 0.4
 		#  0.3,0.3,0.3,0.3, 0.3, 0.3
 		]
-EFs = [12*1000,
+EFs = [12*1000,12*1000,12*1000,12*1000,12*1000,
 	#    12*1000,14*1000,16*1000,18*1000, 20*1000, 5*1000
 	   ]
 barnu = 377
@@ -75,6 +75,8 @@ else:
 	BVTs = []
 	analysis = True
 
+BVT_T_list = []
+BVT_tau_list = []
 # analysis loop
 for i in range(len(ToTFs)):
 	ToTF = ToTFs[i]
@@ -93,6 +95,9 @@ for i in range(len(ToTFs)):
 	BVT.time_delay = contact_time_delay(BVT.phaseshiftsQcrit, 1/BVT.nus)
 	BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)
 	BVT.rel_amp = 1/(np.sqrt(1+(2*np.pi*BVT.nus*BVT.tau)**2))
+	BVT_T_list.append(BVT.T)
+	# BVT_tau_list.append((np.tan(BVT.phiLR)/nus/2/np.pi * 2*np.pi)[0])
+	BVT_tau_list.append(BVT.tau *1e6) # [us]
 	BVTs.append(BVT)
 
 with open(pickle_file, 'wb') as f:
@@ -117,60 +122,97 @@ colors_light = ['powderblue', 'plum',
 				]
 colors_dark = ['steelblue', 'orchid', 'palevioletred']
 
+all_handles = []
+all_labels = []
+
 #making 2 subplots for phase shift plots 
 for b in range(2):
 	current_ax = ax[b]
 	
 	if b == 0:
 		xlabel = r"$h\nu/k_BT$"	
-		ylabel = rf'$\phi = \arctan(2\pi\omega \tau)$ [rad]'
+		ylabel = rf'$\phi = \arctan(\omega \tau)$ [rad]'
 	else:
-		xlabel = r"$h\nu/k_BT$"
-		ylabel = rf'$\tan(\phi)/\omega$ [1/kHz]'
+		xlabel = f"T [nK]"
+		ylabel = rf'$\tau = \tan(\phi)/\omega$ [us]'
+
 
 	# Loop over BVTs to plot theory curves
 	for j, BVT in enumerate(BVTs):
 		if b == 0:
 			x_theory = BVT.nus / BVT.T
 			y_theory = BVT.phiLR
+
+			EF_kHz = (BVT.T / BVT.ToTF) / 1e3
+			
+			linestyle = ':'
+			marker =''
+			label2 = f'ToTF={BVT.ToTF}, EF={EF_kHz:.0f} kHz'
 		else:
-			x_theory = BVT.nus / BVT.T
-			y_theory = np.tan(BVT.phiLR)/nus
+			x_theory = BVT_T_list
+			y_theory = BVT_tau_list
 
-		EF_kHz = (BVT.T / BVT.ToTF) / 1e3
-		label2 = f'ToTF={BVT.ToTF}, EF={EF_kHz:.0f} kHz'
+			linestyle = ':'
+			marker='.'
 
-		current_ax.plot(x_theory, y_theory, ':', color=colors[j], label=label2)
+			label2 = None
+		
 
-		# current_ax.plot(x_theory, BVT.tau, ':', color=colors[j], label=label2)
+		handle, = current_ax.plot(x_theory, y_theory, linestyle = linestyle, 
+				  marker = marker, color=colors[j], label=label2)
+
+		if b == 0 and label2 is not None:
+			all_handles.append(handle)
+			all_labels.append(handle.get_label())
 	# Plot data for current axis
 	for i, (temp, ef_val) in enumerate(zip(templist, EFslist)):
 		if b == 0:
 			x_data = data_2025['Modulation Freq (kHz)'][i] / temp / ef_val
 			y_data_C = data_2025['Phase Shift C-B (rad)'][i]
 			y_data_A = data_2025['Phase Shift A-f0 (rad)'][i]
-		else:
-			x_data = data_2025['Modulation Freq (kHz)'][i]*1e3
-			y_data_C = data_2025['Phase Shift C-B (rad)'][i]
-			y_data_A = data_2025['Phase Shift A-f0 (rad)'][i]
-			y_data_C = np.tan(y_data_C) / data_2025['Modulation Freq (kHz)'][i]
-			y_data_A = np.tan(y_data_A) / data_2025['Modulation Freq (kHz)'][i]
 
-		current_ax.errorbar(
+			y_data_C_err = data_2025['Phase Shift C-B err (rad)'][i]
+			y_data_A_err = data_2025['Phase Shift A-f0 err (rad)'][i]
+		else:
+			x_data = temp*ef_val*1000
+			y_data_C = data_2025['Phase Shift C-B (rad)'][i] 
+			y_data_A = data_2025['Phase Shift A-f0 (rad)'][i] 
+			y_data_C = np.tan(y_data_C) / data_2025['Modulation Freq (kHz)'][i]/2/np.pi *1e3
+			y_data_A = np.tan(y_data_A) / data_2025['Modulation Freq (kHz)'][i]/2/np.pi *1e3
+
+			y_data_C_err = np.sqrt((1/(np.cos(data_2025['Phase Shift C-B err (rad)'][i]))**2/2/np.pi/data_2025['Modulation Freq (kHz)'][i])/(np.tan(data_2025['Phase Shift C-B err (rad)'][i]*0)/2/np.pi/data_2025['Modulation Freq (kHz)'][i]))
+			y_data_A_err = data_2025['Phase Shift A-f0 err (rad)'][i]*0
+
+		err_C = current_ax.errorbar(
 			x_data,
 			y_data_C,
-			yerr=data_2025['Phase Shift C-B err (rad)'][i],
+			yerr=y_data_C_err,
 			color=colors_light[i],
-			label=f'C-B: {data_2025["Modulation Freq (kHz)"][i]}kHz'
+			# label=f'C-B: {data_2025["Modulation Freq (kHz)"][i]}kHz',
+			marker='.',
 		)
+		line_C = err_C[0]
+		line_C.set_label(f'C-B: {data_2025["Modulation Freq (kHz)"][i]}kHz')
 
-		current_ax.errorbar(
+		err_A = current_ax.errorbar(
 			x_data,
 			y_data_A,
-			yerr=data_2025['Phase Shift A-f0 err (rad)'][i],
+			yerr=y_data_A_err,
 			color=colors_dark[i],
-			label=f'A-f0: {data_2025["Modulation Freq (kHz)"][i]}kHz, {data_2025["Unnamed: 0"][i]}'
+			# label=f'A-f0: {data_2025["Modulation Freq (kHz)"][i]}kHz, {data_2025["Unnamed: 0"][i]}',
+			marker='.',
 		)
+
+		line_A = err_A[0]
+		line_A.set_label(f'A-f0: {data_2025["Modulation Freq (kHz)"][i]}kHz, {data_2025["Unnamed: 0"][i]}')
+
+# Only collect legend handles for b == 0
+		if b == 0:
+			all_handles.append(line_C)
+			all_labels.append(line_C.get_label())
+
+			all_handles.append(line_A)
+			all_labels.append(line_A.get_label())
 	# Set axis properties
 	current_ax.set(
 	# xlabel=r"Frequency, $\nu/T$", 
@@ -180,7 +222,7 @@ for b in range(2):
 ylabel = ylabel,
 	#    ylim=[0,1]
 	)
-current_ax.legend(fontsize=8)
+ax[0].legend(all_handles, all_labels, fontsize=8)
 fig.tight_layout()
 
 #time lag and time lag/tau plts 
@@ -193,10 +235,10 @@ for b in range(2):
 	
 	if b == 0:
 		xlabel = r"$h\nu/k_BT$"	
-		ylabel = rf'$\phi$/2/$\pi$/$\omega$ [ms]'
+		ylabel = rf'$\tau_\mathrm{{lag}}=\phi$/2/$\pi$/$\omega$ [ms]'
 	else:
 		xlabel = r"$h\nu/k_BT$"	
-		ylabel = rf'$\phi$/2/$\pi$/$\omega/\tau$ [ms]'
+		ylabel = rf'$\tau_\mathrm{{lag}}/\tau$'
 
 	# Loop over BVTs to plot theory curves
 	for j, BVT in enumerate(BVTs):
@@ -204,32 +246,32 @@ for b in range(2):
 		BVT.time_delay_LR_noz = contact_time_delay(BVT.phiLR_noz, 1/BVT.nus)
 		x_theory = BVT.nus/BVT.T
 		if b == 0:
-			y_theory = BVT.time_delay_LR*1e3
+			y_theory = BVT.time_delay_LR * 1e3
+
 		else:
-			y_theory = BVT.time_delay_LR*1e3/BVT.tau
+			y_theory = BVT.time_delay_LR/BVT.tau
 
 		EF_kHz = (BVT.T / BVT.ToTF) / 1e3
 		label2 = f'ToTF={BVT.ToTF}, EF={EF_kHz:.0f} kHz'
 
-		current_ax.plot(x_theory, y_theory, ':', color=colors[j], label=label2)
-
+		if j == 1:
+			current_ax.plot(x_theory, y_theory, ':', color=colors[j], label=label2)
+		if b == 0 and j == 1:
+			current_ax.hlines(y=BVT.tau * 1000, xmin=min(x_theory), xmax=max(x_theory),ls='--', marker='',color='black', label=rf'$\tau = {BVT.tau*1000:.2f}, ToTF = {BVT.ToTF}')
+			current_ax.legend()
 	# Plot data for current axis
 	for i, (temp, ef_val) in enumerate(zip(templist, EFslist)):
 		x_data = data_2025['Modulation Freq (kHz)'][i]/temp/ef_val
 		T = temp*ef_val*1000
 		betaomegas = T*np.array([np.log(data_2025['Modulation Freq (kHz)'][i])])
 		BVT_data = BulkViscTrap(temp, ef_val*1000, barnu, betaomegas)
+		BVT_data.tau = BVT_data.tau * 1e3 #ms
 		# print(BVT_data.tau)
-		if b == 0:
-			y_A = contact_time_delay(data_2025['Phase Shift A-f0 (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-			y_A_err = contact_time_delay(data_2025['Phase Shift A-f0 err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-			y_C = contact_time_delay(data_2025['Phase Shift C-B (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-			y_C_err = contact_time_delay(data_2025['Phase Shift C-B err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-		else:
-			y_A = contact_time_delay(data_2025['Phase Shift A-f0 (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-			y_A_err = contact_time_delay(data_2025['Phase Shift A-f0 err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-			y_C = contact_time_delay(data_2025['Phase Shift C-B (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
-			y_C_err = contact_time_delay(data_2025['Phase Shift C-B err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]*1e3))*1e3
+		y_A = contact_time_delay(data_2025['Phase Shift A-f0 (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]))
+		y_A_err = contact_time_delay(data_2025['Phase Shift A-f0 err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]))
+		y_C = contact_time_delay(data_2025['Phase Shift C-B (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]))
+		y_C_err = contact_time_delay(data_2025['Phase Shift C-B err (rad)'][i], 1/(data_2025['Modulation Freq (kHz)'][i]))
+		if b == 1:
 			y_A = y_A/BVT_data.tau
 			y_A_err = y_A_err/BVT_data.tau
 			y_C = y_C/BVT_data.tau
@@ -318,7 +360,7 @@ axs.legend()
 fig, ax=plt.subplots(figsize=(5*subfigs, 4))
 ax.set(
 	xlabel=r"$h\nu/k_BT$", 
-	   ylabel=r"Relative amplitude $|\chi(\omega)|/S$",
+	   ylabel=r"Relative amplitude $\alpha_\mathrm{DC}/\alpha_\mathrm{AC}$",
 )
 ax.legend()
 

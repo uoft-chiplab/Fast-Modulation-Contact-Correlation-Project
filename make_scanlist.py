@@ -111,15 +111,17 @@ singleshot=False
 
 # times
 pulsetime=0.010
-t = np.array([0.22,0.25,0.28, 0.31,0.34,0.37, 0.40, 0.43, 0.46, 0.49, 0.52, 0.55, 0.58
-					])+pulsetime/2 
+t = np.array([0.215, 0.225, 0.235, 0.245, 0.255, 0.265, 0.275, 0.285, 0.295, 0.305, 0.315
+					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
+
 f = 10 #kHz
 amp = 1.8 # Vpp
 vva= 9
-reps = 3
-###expected phase shift based on frequency of mod (and temp etc in theory)
-###expected time accounting for 1/2 pulse length since the dimer is formed in the middle of the pulsetime
+reps = 2
+
+###dimer is formed in the middle of the pulsetime
 t_pulse = t - pulsetime/2
+
 # frequencies
 wait=0.02
 
@@ -173,16 +175,23 @@ field_params = field_cal_df[['B_amp', 'B_phase', 'B_offset']].values[0]
 
 popts, pcov, sin = fit_fixedSinkHz(t, np.sin((f*2*np.pi)*t-field_params[1]), f, 0, p0=[0.07,6,202.1])
 
-plt.plot(t, np.sin((f*2*np.pi)*t-field_params[1]), marker="o", ls="", color="hotpink", 
-		 label = 'Expected Phase Shift Time')
-
-plt.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]), marker="", ls="-", color="hotpink")
-# plt.plot(t2, sin(t2, *popts), marker="", ls="--", color="cornflowerblue")
-plt.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_params[1]), marker="o", ls="", color="cornflowerblue", 
+# plt.plot(t, np.sin((f*2*np.pi)*t-field_params[1]), marker="o", ls="", color="hotpink", 
+# 		 label = 'Time delay timestamps')
+plt.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]), marker="", ls="-", color="hotpink", label='Field cal')
+# plt.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_params[1]), marker="o", ls="", color="cornflowerblue", 
+# 		 label = 'Time of Beginning of Pulse')
+expectedphaseshift = np.pi/4
+expected_timedelay = t2 + expectedphaseshift / (2*np.pi*f)
+plt.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]-expectedphaseshift), marker="", ls="-", color="crimson", 
+		 label = f'Expected phase shift comp. field cal= {expectedphaseshift:.2f}')
+plt.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_params[1]-expectedphaseshift), marker="o", ls="", color="cornflowerblue", 
 		 label = 'Time of Beginning of Pulse')
+plt.plot(t, np.sin((f*2*np.pi)*t-field_params[1]-expectedphaseshift), marker="o", ls="", color="crimson", 
+ 		 label = 'Time delay timestamps')
+
 plt.xlabel("time (ms)")
 plt.ylabel("B (au)")
-# plt.legend()
+plt.legend()
 
 
 #generate a list of f0s based on B for each time we choose 
@@ -216,7 +225,7 @@ for f0 in predicted_f0s_list:
 	if singleshot == True:
 		scanlist.append(generate_singleshot_scanlist(f0, vva, 15, 5, wings = None, randomize=True))
 	else:
-		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 7, 0, 2, 1, reps,randomize=True))
+		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 7, 0, 3, 1, reps,randomize=True))
 scanlist = np.array(scanlist)
 SHOW_SCANLIST= True
 if SHOW_SCANLIST:
