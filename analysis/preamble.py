@@ -34,6 +34,6 @@ if module_folder not in sys.path:
 	sys.path.append(module_folder)
 	
 from data_class import Data
-from library import fit_label, a0, pi
+from library import fit_label, a0, pi, hbar, GammaTilde
 from fit_functions import Sinc2
 

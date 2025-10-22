@@ -1,22 +1,25 @@
 """
-calculates phase shift between amplitude/frequency/contact/field for modulated field
-from dimer spectra, or the contact given static field.
+Calculates phase shift between amplitude/frequency/contact/field for modulated field from dimer spectra, or the contact given static field.
 
-plots dimer spectra for each wiggle time (ac) or field value (dc) if show_dimer_plot==True.
+Plots dimer spectra for each wiggle time (ac) or field value (dc) if show_dimer_plot==True.
 
-assumes fixed sinc^2 width for each dimer fit, and 0 background transfer.
+Assumes fixed sinc^2 width for each dimer fit, and 0 background transfer.
 
-set plot_dc==True to plot dc field points along with ac fits, given dc_cal_path
+Set plot_dc==True to plot dc field points along with ac fits, given dc_cal_path
 
-add times to dropped_list to exclude. times in dropped_list must match wiggle times in df
+Add times to dropped_list to exclude. times in dropped_list must match wiggle times in df
 
-remember to change field_cal run name to match wiggle run for correct B plot!
+Remember to change field_cal run name to match wiggle run for correct B plot!
+
+TO DO:
+- Put dropped_list in metadata somehow
 """
 
 # settings for directories, standard packages...
 from preamble import *
 
-runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M"]
+runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
+		"2025-10-21_H"]
 # 2025-09-24_E is 6kHz 20us pulse 1.8Vpp
 # 2025-10-01_L is 10kHz 20us pulse 1.8Vpp
 # 2025-10-17_E is ???
@@ -25,11 +28,13 @@ runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18
 # 2025-10-20_M is 10kHz 10us pulse 1.8Vpp for small scan list around spectra peaks
 
 
-run = runs[1]
+run = runs[-1]
 time_column_name = "Wiggle Time" # I think we can set this to be automatic 
 								# by looping through column names and finding which contains "time"
 wiggle_amp = 1.8  # Vpp
 dropped_list = [0.22, 0.25]
+dropped_list = [0.29]
+dropped_list = []
 
 DC_cal_path = os.path.join(root_data, r"2025\09 September2025\31September2025\D_DCfield_dimer20us_5VVA_arggghhhh\DC_field_cal.csv")
 DC_cal_csv = pd.read_csv(DC_cal_path)
