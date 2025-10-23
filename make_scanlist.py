@@ -23,7 +23,7 @@ def generate_spectra_scanlist(trf, f0, VVA, n_peak, n_wings, n_bg, max_wings_fre
 	freq_width = 1/trf
 	x0 = 47.2227
 	# sample around peak with arcsin, s.t. you weigh more near the peak.
-	peak_shift_dets = np.arcsin(np.linspace(0, 1, n_peak // 2 + 1, endpoint=False))/(np.pi/2) * freq_width
+	peak_shift_dets = np.arcsin(np.linspace(0, 1, n_peak // 2 + 1, endpoint=False))/(np.pi/2) * freq_width/0.75
 	# add the flipped shifts, ignoring the centre
 	peak_shift_dets = np.concat([-peak_shift_dets[1:], peak_shift_dets])
 	# actual dets obtained by adding to centre det
@@ -116,7 +116,7 @@ t = np.array([0.215, 0.225, 0.235, 0.245, 0.255, 0.265, 0.275, 0.285, 0.295, 0.3
 
 f = 10 #kHz
 amp = 1.8 # Vpp
-vva= 9
+vva= 7
 reps = 2
 
 ###dimer is formed in the middle of the pulsetime
