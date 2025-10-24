@@ -87,7 +87,7 @@ class metadata:
     def get_ushots(self, run, j):
         # interpolate between values before and after 
         y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
-        runpaths = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/*UShots") # case insensitive on windows
+        runpaths = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/*UShots*") # case insensitive on windows
 
         if len(runpaths) > 1:
             # get ushot run closest to run
@@ -111,7 +111,7 @@ class metadata:
         self.df.loc[j, ["wx", "wy", "wz"]] = np.mean(u_df[["wx", "wy", "wz"]], axis=0)
 
     def output(self):
-        if self.overwrite:
+        if self.overwrite: # I'm not 100% sure this works all the time
             if os.path.exists(self.fpath):
                 # make able to overwrite individual dfs?
                 old_df = pd.read_csv(self.fpath)
@@ -132,10 +132,16 @@ class metadata:
 
 # VVA to rabi frequency
 # trap depth in UShots
+# time column name?
 
 if __name__ == "__main__":
     # attributes
-    runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E"]
+    runs = ["2025-09-24_E", 
+            "2025-10-01_L",
+            "2025-10-17_E",
+            "2025-10-21_H", 
+            "2025-10-23_R",
+            "2025-10-23_S"]
     #"2025-09-24_E" is 6kHz 20us pulse 1.8Vpp
     #2025-10-01_L is 10kHz 20us pulse 1.8Vpp
 
@@ -143,17 +149,31 @@ if __name__ == "__main__":
     drop_list = [
           [],
           [0.29], 
+          [],
+          [],
+          [],
           []
     ]
 
     notes = [
-        "", 
-        "",
-        ""
+        "good", 
+        "good",
+        "?",
+        "decent",
+        "bad",
+        "?"
     ]
+    # 2025-09-24_E is 6kHz 20us pulse 1.8Vpp
+# 2025-10-01_L is 10kHz 20us pulse 1.8Vpp
+# 2025-10-17_E is ???
+# 2025-10-17_M is 10kHz 20us pulse 1.8Vpp single shot measurements
+# 2025-10-18_O is 10kHz 20us pulse 1.8Vpp single shot measurements take 2
+# 2025-10-20_M is 10kHz 10us pulse 1.8Vpp for small scan list around spectra peaks
+# 2025-10-21-H is 10kHz 10us pulse 1.8Vpp for small scan list around spectra peaks
+# 2025-10-23-R is 10kHz 10us pulse 1.8Vpp for small scan list around spectra peaks
 
-    overwrite = True
+    overwrite = True 
     fpath = "metadata.csv"
-
+    
     a = metadata(runs, drop_list, overwrite, fpath, notes)
     a.output()

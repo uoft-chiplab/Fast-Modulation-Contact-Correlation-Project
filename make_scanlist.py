@@ -113,11 +113,11 @@ singleshot=False
 pulsetime=0.010
 t = np.array([0.215, 0.225, 0.235, 0.245, 0.255, 0.265, 0.275, 0.285, 0.295, 0.305, 0.315
 					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
-
+np.random.shuffle(t)
 f = 10 #kHz
 amp = 1.8 # Vpp
-vva= 7
-reps = 2
+vva= 9
+reps = 3
 
 ###dimer is formed in the middle of the pulsetime
 t_pulse = t - pulsetime/2
@@ -225,7 +225,7 @@ for f0 in predicted_f0s_list:
 	if singleshot == True:
 		scanlist.append(generate_singleshot_scanlist(f0, vva, 15, 5, wings = None, randomize=True))
 	else:
-		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 7, 0, 3, 1, reps,randomize=True))
+		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 5, 0, 2, 1, reps,randomize=True))
 scanlist = np.array(scanlist)
 SHOW_SCANLIST= True
 if SHOW_SCANLIST:

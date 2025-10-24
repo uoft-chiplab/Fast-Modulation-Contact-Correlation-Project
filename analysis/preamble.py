@@ -5,7 +5,7 @@ from scipy.optimize import curve_fit
 from glob import glob
 import sys 
 import os
-
+import ast
 # pretty plots
 from cycler import cycler
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -34,6 +34,6 @@ if module_folder not in sys.path:
 	sys.path.append(module_folder)
 	
 from data_class import Data
-from library import fit_label, a0, pi, hbar, GammaTilde
+from library import fit_label, a0, pi, hbar, GammaTilde, h
 from fit_functions import Sinc2
-
+from rfcalibrations.Vpp_from_VVAfreq import Vpp_from_VVAfreq
