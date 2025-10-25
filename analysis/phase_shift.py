@@ -217,7 +217,6 @@ def Contact_from_amplitude(A, eA, EF, OmegaR, trf):
 	e_C = e_Id/Id * C
 
 	return Id, e_Id, C, e_C
-	# return A/(VVA/10)**2, eA/(VVA/10)**2
 
 def bg_over_scan(datfiles, plot=False):
 	# mscan = pd.read_csv(glob(f"{runpath}*.mscan")[0], skiprows=2)

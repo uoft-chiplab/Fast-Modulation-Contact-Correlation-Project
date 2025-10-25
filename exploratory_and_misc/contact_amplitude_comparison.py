@@ -16,8 +16,8 @@ from preamble import *
 from scipy.interpolate import interp1d
 from scipy.interpolate import make_smoothing_spline
 ### FLAGS
-TALK = 1
-
+TALK = 0
+EXPORT = True
 ### NUMBERS
 # runs
 runs = [
@@ -28,12 +28,21 @@ runs = [
 		'2025-10-15_J',
 		'2025-10-15_H'
 		] # date and letter, here 202.24 and 202.04 G
+ToTFs = [0,
+		 0,
+		 0.27,
+		 0.27,
+		 0.55,
+		 0.55]
 # kept constant for both runs
 pulse_time = 20
 VVA = 4.5 
+# this fudges the Rabi calibrated at 47 MHz for the attenuation at 43, but a calibration directly at 43 would be better
+RabiperVpp47 = 13.05 / 0.500 # kHz/Vpp on scope 2025-10-21
+e_RabiperVpp47 = 0.22
+phaseO_OmegaR = lambda VVA, freq: 2*pi*RabiperVpp47 * Vpp_from_VVAfreq(VVA, freq)
 # From Q_UShots; just estimates
 EF = 10.5 # kHz
-ToTF = 0.27
 Num = 8520
 
 ### FUNCTION DEFINITIONS
@@ -70,26 +79,6 @@ def find_transfer(df):
 
 	return data
 
-def avg_transfer(df):
-
-	bg_err_rel = (df.ec5bg/df.c5bg).values[0] # same for all points
-
-	# uncertainty in mean
-	count = df.groupby("detuning")["c5"].count()
-	std = df.groupby("detuning")["c5"].std()
-	mean = df.groupby("detuning")["c5"].mean()
-
-	c5_err_rel = ((std/count)/mean).values
-	transfer_mean = df.groupby("detuning")["c5transfer"].mean()
-
-	transfer_df_avg = pd.DataFrame(
-						{
-						'c5transfer' : transfer_mean,
-						'ec5transfer' : transfer_mean.values*np.sqrt(c5_err_rel**2 + bg_err_rel**2)}
-						)
-
-	return transfer_df_avg
-
 def fit_sinc2(xy, width=False):
 	"""
 	fits xy, input as single array, to sinc2 function. returns fitted params, errors, and label
@@ -116,6 +105,42 @@ def fit_sinc2(xy, width=False):
 	plabel = fit_label(popts, perrs, paramnames)
 
 	return popts, perrs, plabel, sinc2
+def a13(B):
+	''' ac scattering length '''
+	abg = 167.6*a0
+	DeltaB = 7.2
+	B0 = 224.2
+	return abg*(1 - DeltaB/(B-B0))
+def Contact_from_amplitude(A, eA, EF, OmegaR, trf):
+	"""
+	Convert fitted amplitude to \alpha (raw transfer) into GammaTilde -> Id -> C
+	A -- fitted amplitude to \alpha
+	eA -- error on A
+	EF -- Fermi energy in Hz
+	OmegaR -- Rabi frequency in kHz
+	trf -- rf pulse time in us
+	returns dimer spectral weight (Id), error in Id, contact/NkF (C, technically Ctilde), error in C
+	TODO: proper error propgation from A, error elsewhere
+	"""
+	# scale fitted amplitude to gammatilde
+	gammatilde = h*EF / (hbar * pi * (OmegaR*1e3)**2 * (trf/1e6)) * A 
+	### TODO: uncertainty analysis that considers uncertainty in EF and OmegaR
+	e_gammatilde = eA/A * gammatilde
+	# calculate Id (dimer spectral weight) from gammatilde and then C
+	Id_conv = 2 # this makes the spectral weight a fraction out of 1; right side of Fig. 3
+	Id = gammatilde / (trf/1e6) / (EF) * Id_conv
+	e_Id = e_gammatilde/gammatilde * Id
+
+	# use CC theory line / our empirical fit to convert Id -> C
+	kF = np.sqrt(2*mK*EF*h)/hbar
+	a13kF = kF * a13(202.14)
+	spin_me = 32/42 # spin matrix element
+	ell_d_CCC = spin_me * 42 * np.pi
+
+	C =   Id * np.pi / (ell_d_CCC *kF* a0) 
+	e_C = e_Id/Id * C
+
+	return Id, e_Id, C, e_C
 
 CCC_df = pd.read_csv('ac_s_Eb_vs_B_220-225G.dat',
 	delimiter='\s', header=None)
@@ -141,7 +166,7 @@ ax.legend()
 
 valid_results = []
 # analysis loop
-for run in runs:
+for run, ToTF in zip(runs, ToTFs):
 	# find data files
 	y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 	runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
@@ -156,6 +181,7 @@ for run in runs:
 	print(f'B={Bfield}')
 	run_df = pd.read_csv(datfiles[0])
 	VVA = run_df['VVA'].max() # maximum VVA; assumes VVA is the same except for the 0 point
+	run_df['OmegaR'] = phaseO_OmegaR(VVA, run_df['freq'])
 	data = find_transfer(run_df)
 	data['detuning']=-data['detuning']
 	width = 1/pulse_time 
@@ -173,16 +199,23 @@ for run in runs:
 		ax.set(xlabel='detuning [MHz]', ylabel=r'$\alpha_\mathrm{transfer}$',
 		  title=f'{run}, amp={popts[0]:.3f}({round(perrs[0]*1000):d}), x0={popts[1]:.3f}({round(perrs[1]*1000):d})')
 
+	# calculate the contact from the fit amplitude
+	Id, e_Id, contact, e_contact = \
+			Contact_from_amplitude(popts[0], perrs[0], EF*1e3, run_df['OmegaR'].mean(), pulse_time)
+
 	# Save for later plotting
 	valid_results.append({
+		"run": run,
 		"c5transfer": data['c5transfer'],
 		"sinc2": sinc2,
 		"popts": popts,
 		"perrs":perrs,
 		"plabel": plabel,
-		"run": run,
+		"contact":contact,
+		"e_contact":e_contact,
 		"Bfield":Bfield,
-		"B_from_f0":B_from_f0
+		"B_from_f0":B_from_f0,
+		"ToTF": ToTF
 	})
 
 # check if B the scan was supposed to be taken at matches B from f0
@@ -226,12 +259,23 @@ ax.set(
 	ylabel=r'$\alpha_\mathrm{transfer}$', xlabel='B [G]',
 	   title=rf'$\alpha_\mathrm{{amp}} = {DC_alpha_amplitude:.3f}({round(e_DC_alpha_amplitude*1000):d})$,comparing 2025-10-15 cold')
 
-phase_shift_summary = pd.read_csv(os.path.join(analysis_folder, 'phase_shift_2025_summary.csv'), index_col=0)
-phase_shift_summary = phase_shift_summary[phase_shift_summary.index =='2025-10-01_L']
-AC_alpha_amplitude = phase_shift_summary['Amplitude of Sin Fit of A'].values[0]
-e_AC_alpha_amplitude = phase_shift_summary['Error of Amplitude of Sin Fit of A'].values[0]
 
-relative_amp = AC_alpha_amplitude/DC_alpha_amplitude
-e_relative_amp = np.sqrt((e_AC_alpha_amplitude/AC_alpha_amplitude)**2 + (e_DC_alpha_amplitude/DC_alpha_amplitude)**2)
-e_relative_amp_abs = e_relative_amp * relative_amp
-print(f'Relative AC/DC transfer amplitude is {relative_amp:.2f}({int(e_relative_amp_abs*100):d})')
+# output results that can be turned into B vs. C relation
+output_runs = ['2025-10-15_L', '2025-10-15_M', '2025-10-15_J','2025-10-15_H']
+csv_df = pd.DataFrame(valid_results)
+csv_df = csv_df[csv_df['run'].isin(output_runs)]
+
+fig, ax = plt.subplots()
+ax.errorbar(csv_df['Bfield'], csv_df['contact'], csv_df['e_contact'], marker='o', ls='')
+ax.set(xlabel='Bfield [G]', ylabel=r'$C/Nk_F$')
+fig.tight_layout()
+if EXPORT == True:
+	csv_path = os.path.join(os.getcwd(), f'DC_contact.csv')
+	write_header = not os.path.exists(csv_path)
+
+	
+	try:
+		csv_df.to_csv(csv_path, mode='a', header=write_header, index=False, sep=',')
+		print(f"✅ Created csv at {csv_path}")
+	except:
+		print(f"Something went wrong when trying to write {csv_path}")

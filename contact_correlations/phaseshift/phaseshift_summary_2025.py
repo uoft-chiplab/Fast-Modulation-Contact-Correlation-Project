@@ -20,6 +20,9 @@ library_folder = os.path.join(github_folder, r"analysis")
 # Fast-Modulation-Contact-Correlation-Project\contact_correlations\phaseshift
 ps_folder = os.path.join(root_folder, r"contact_correlations\phaseshift")
 
+# Fast-Modulation-Contact-Correlation-Project\FieldWiggleCal
+field_cal_folder = os.path.join(root_folder, r"FieldWiggleCal")
+
 import sys
 if library_folder not in sys.path:
 	sys.path.append(library_folder)
@@ -32,6 +35,7 @@ from matplotlib import colors
 import pickle
 import pandas as pd
 import ast
+from scipy.interpolate import interp1d
 
 #2025 data comes from phase_shift.py
 data = pd.read_csv(ps_folder + '\\phase_shift_2025_summary.csv')
@@ -246,10 +250,12 @@ axs[1].set(
 axs[2].set(
 	xlabel=r"$h\nu/k_BT$", 
 	   ylabel=r"Relative amplitude $\alpha_\mathrm{AC}/\alpha_\mathrm{DC}$",
+	   ylim=[0,1]
 )
 axs[3].set(
 	xlabel=r"$h\nu/k_BT$", 
 	   ylabel=r"Relative amplitude $C_\mathrm{AC}/C_\mathrm{DC}$",
+	   ylim=[0,1]
 )
 x_data = (data['freq']*1000)/data['T']
 plot_params = ['Sin Fit of A', 'Sin Fit of C']
@@ -272,53 +278,70 @@ for b, BVT in enumerate(BVTs):
 	axs[3].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.ToTF),
 		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
 		  )
-for i, plot_param in enumerate(plot_params):
-	DC_amps = 0.0844 # NOT CORRECT
-	DC_amps_err = 0.0136
-	AC_amps = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
-	AC_amps_err = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 
-	rel_amps = AC_amps/DC_amps
-	e_rel_amps = np.sqrt((AC_amps_err/AC_amps)**2 + (DC_amps_err/DC_amps)**2) * rel_amps
+# get DC dimer amplitudes (currently only valid for ToTF=0.3)
+DCdf = pd.read_csv(os.path.join(root_folder, 'exploratory_and_misc/DC_contact.csv'))
+DCdf['alpha'] = DCdf['popts'].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
+DCdf = DCdf[DCdf['ToTF'] < 0.3]
+DCdf.sort_values(by='Bfield')
+alphas = np.array(DCdf['alpha'].apply(lambda x: x[0]).tolist())
+field_to_contact = interp1d(DCdf['Bfield'], DCdf['contact'], kind='linear', fill_value='extrapolate')
+field_to_alpha = interp1d(DCdf['Bfield'], alphas, kind='linear', fill_value='extrapolate')
+Bs = np.linspace(DCdf['Bfield'].min(), DCdf['Bfield'].max(), 10)
+Cs = field_to_contact(Bs)
+As = field_to_alpha(Bs)
+fig2, ax = plt.subplots()
+ax.plot(DCdf['Bfield'], DCdf['contact'], marker='o', ls='')
+ax.plot(Bs, Cs, ls='--', marker='')
+ax.set(xlabel='Bfield [G]', ylabel=r'$C/Nk_F$', title=r'$T/T_F \approx 0.3$')
+
+# need field cal amplitudes for each run
+# load wiggle field calibration
+field_cal_df_path = os.path.join(field_cal_folder, "field_cal_summary.csv")
+field_cal_df = pd.read_csv(field_cal_df_path)
+field_cal_df['field_cal_run'] = field_cal_df['run']
+field_cal_df = field_cal_df[['field_cal_run','B_amp']]
+data=pd.merge(data, field_cal_df, on='field_cal_run')
+data['contact_DC_amp'] = np.abs(field_to_contact(202.14-data['B_amp']) - field_to_contact(202.14+data['B_amp'])) /2 # divide by 2 to compare to sine fit amp
+data['alpha_DC_amp'] = np.abs(field_to_alpha(202.14-data['B_amp']) - field_to_alpha(202.14+data['B_amp'])) /2
+# from field_cal_run, find field amplitude for each run, then evaluate DC contact and alpha amplitude
+# for 202.14 +/- Bamp. Calculate difference. Call it DC amp.
+
+for i, plot_param in enumerate(plot_params):
+	if i==0:
+		DC_amps = data['alpha_DC_amp']
+		DC_amps_err = data['alpha_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY
+		data['alpha_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
+		data['alpha_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
+		data['alpha_rel_amp'] = data['alpha_AC_amp']/data['alpha_DC_amp']
+		data['alpha_rel_amp_err'] = np.sqrt((data['alpha_AC_amp_err']/data['alpha_AC_amp'])**2 +\
+									   (DC_amps_err/DC_amps)**2) * data['alpha_rel_amp']
+		rel_amps = data['alpha_rel_amp']
+		e_rel_amps = data['alpha_rel_amp_err']
+
+	else:
+		DC_amps = data['contact_DC_amp']
+		DC_amps_err = data['contact_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY
+		data['contact_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
+		data['contact_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
+		data['contact_rel_amp'] = data['contact_AC_amp']/data['contact_DC_amp']
+		data['contact_rel_amp_err'] = np.sqrt((data['contact_AC_amp_err']/data['contact_AC_amp'])**2 +\
+									   (DC_amps_err/DC_amps)**2) * data['contact_rel_amp']
+		rel_amps = data['contact_rel_amp']
+		e_rel_amps = data['contact_rel_amp_err']
+	
+
 	for x, y, ey,color, marker in zip(x_data, rel_amps, e_rel_amps, colors_data, markers_data):	
 		axs[i+2].errorbar(
 		x,y,yerr= ey,color=color,marker=marker, mec=darken(color)
 		)
+fig.suptitle(r'Summary: analyzing amplitude')
+fig.tight_layout()
 
+fig, ax=plt.subplots()
+xd = data['ToTF']
+yd = np.ones(len(data))
 
-# for (i, temp, EFs) in zip(data_2025.index, templist, EFslist):
-# 	x = data_2025['Modulation Freq (kHz)'][i]/temp/EFs
-# 	if data_2025['Unnamed: 0'][i] != '2025-10-01_L': # only have data to compare to 10 kHz for now -- 2025-10-15
-# 		ax.errorbar(x, rel_amp, 
-# 		yerr = e_rel_amp_abs,
-# 		marker='o', ls='', color=colors_light[i], 
-# 		label=f"{data_2025['Unnamed: 0'][i]}, A: {data_2025['Modulation Freq (kHz)'][i]}kHz"
-# 		)
-# 		# continue
-# 		# Completely eyeballed guess right now
-# 		# DC_amp = 0.05
-# 		# e_DC_amp = 0.01
-# 		# AC_amp = data_2025['Amplitude of Sin Fit of A'][i]
-# 		# e_AC_amp = data_2025['Error of Amplitude of Sin Fit of A'][i]
-# 		# rel_amp = AC_amp/DC_amp
-# 		# e_rel_amp = np.sqrt((e_AC_amp/AC_amp)**2 + (e_DC_amp/DC_amp)**2)
-# 		# e_rel_amp_abs = e_rel_amp * rel_amp
-# 		# ax.errorbar(x, rel_amp, 
-# 		# 		yerr = e_rel_amp_abs,
-# 		# 		marker='o', ls='', color=colors_light[i], 
-# 		# 		label=f"A: {data_2025['Modulation Freq (kHz)'][i]}kHz, cf. static measurements")
-# 	else :
-# 		DC_amp = 0.0844
-# 		e_DC_amp = 0.0136
-# 		AC_amp = data_2025['Amplitude of Sin Fit of A'][i]
-# 		e_AC_amp = data_2025['Error of Amplitude of Sin Fit of A'][i]
-# 		rel_amp = AC_amp/DC_amp
-# 		e_rel_amp = np.sqrt((e_AC_amp/AC_amp)**2 + (e_DC_amp/DC_amp)**2)
-# 		e_rel_amp_abs = e_rel_amp * rel_amp
-# 		ax.errorbar(x, rel_amp, 
-# 				yerr = e_rel_amp_abs,
-# 				marker='o', ls='', color=colors_light[i], 
-# 				label=f"A: {data_2025['Modulation Freq (kHz)'][i]}kHz, cf. static measurements"
-# 				)
-# ax.legend()
+for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
+	ax.plot(x, y, color=color, marker=marker, mec=darken(color))
 	
