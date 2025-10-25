@@ -21,23 +21,23 @@ from preamble import *
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-10-23_S"
+run = "2025-10-17_M"
 meta_df = pd.read_csv('metadata.csv')
 meta_df = meta_df[meta_df['run']==run]
 # put this into metadata?
 time_column_name = "Wiggle Time" # I think we can set this to be automatic 
 								# by looping through column names and finding which contains "time"
 wiggle_amp = meta_df['Vpp'].values[0]  # Vpp
-dropped_list = ast.literal_eval(meta_df['drop'].values[0]) # list of time stamps to drop
+dropped_list = np.fromstring(meta_df['drop'].values[0].strip('[]'), sep= ' ') # list of time stamps to drop
 pulse_time = meta_df['pulse_time'].values[0] # 
 wiggle_freq = meta_df['freq'].values[0] # kHz
 VVA = meta_df['VVA'].values[0] # assumes just the max VVA for everything
 ### TODO: incorporate into metadata
-EF = 7 # kHz 
+EF = meta_df['EF'].values[0]/h # Hz
 # this fudges the Rabi calibrated at 47 MHz for the attenuation at 43, but a calibration directly at 43 would be better
 RabiperVpp47 = 13.05 / 0.500 # kHz/Vpp on scope 2025-10-21
 e_RabiperVpp47 = 0.22
-phaseO_OmegaR = lambda VVA, freq: 2*pi*RabiperVpp47 * Vpp_from_VVAfreq(VVA, 43.2)
+phaseO_OmegaR = lambda VVA, freq: 2*pi*RabiperVpp47 * Vpp_from_VVAfreq(VVA, freq)
 xlabel = 'Times [ms]'
 # Load CCC data for f0 to B conversion
 CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', 'f0'], delimiter='\s')
@@ -52,17 +52,17 @@ if len(field_cal) > 1:
 print(f'Field cal run being used is {field_cal_run}')
 
 show_dimer_plot = True
-Export = False
+Export = True
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
-single_shot = False
+single_shot = True
 track_bg = True
 
 def line(x, m, b):
-    return m*x+b
+	return m*x+b
 
 def f0_to_B_CCC(x):
 	"""
@@ -187,29 +187,37 @@ def a13(B):
 def GammaTilde(transfer, EF, OmegaR, trf):
 	return EF/(hbar * pi * OmegaR**2 * trf) * transfer
 
-def Contact_from_amplitude(A, eA, VVA, EF, OmegaR, trf):
+def Contact_from_amplitude(A, eA, EF, OmegaR, trf):
 	"""
-	from I_d_CCC =  kF / a13kF / pi * ell_d_CCC * a0 * C, rearranged to solve for C
-
-	todo: make actually related to contact w/ rabi freq calibration
-
+	Convert fitted amplitude to \alpha (raw transfer) into GammaTilde -> Id -> C
+	A -- fitted amplitude to \alpha
+	eA -- error on A
+	EF -- Fermi energy in Hz
+	OmegaR -- Rabi frequency in kHz
+	trf -- rf pulse time in us
+	returns dimer spectral weight (Id), error in Id, contact/NkF (C, technically Ctilde), error in C
+	TODO: proper error propgation from A, error elsewhere
 	"""
-	# calculate Id from gammatilde and then C
-	# gammatilde = h*EF*1e3 / (hbar * pi * OmegaR**2 * trf) * A 
-	# e_gammatilde = ?
+	# scale fitted amplitude to gammatilde
+	gammatilde = h*EF / (hbar * pi * (OmegaR*1e3)**2 * (trf/1e6)) * A 
+	### TODO: uncertainty analysis that considers uncertainty in EF and OmegaR
+	e_gammatilde = eA/A * gammatilde
+	# calculate Id (dimer spectral weight) from gammatilde and then C
+	Id_conv = 2 # this makes the spectral weight a fraction out of 1; right side of Fig. 3
+	Id = gammatilde / (trf/1e6) / (EF) * Id_conv
+	e_Id = e_gammatilde/gammatilde * Id
 
-	#  N = data["c5"].max()
-	#  kF =(3*np.pi**2*N)**(1/3)
-	#  a13kF = kF * a13(202.14)
-	#  spin_me = 32/42 # spin matrix element
-	#  ell_d_CCC = spin_me * 42 * np.pi
+	# use CC theory line / our empirical fit to convert Id -> C
+	kF = np.sqrt(2*mK*EF*h)/hbar
+	a13kF = kF * a13(202.14)
+	spin_me = 32/42 # spin matrix element
+	ell_d_CCC = spin_me * 42 * np.pi
 
-	#  C = A / kF * a13kF * np.pi / ell_d_CCC / a0 
-	#  eC = eA / kF * a13kF * np.pi / ell_d_CCC / a0 
+	C =   Id * np.pi / (ell_d_CCC *kF* a0) 
+	e_C = e_Id/Id * C
 
-	#  return C, eC
-
-	return A/(VVA/10)**2, eA/(VVA/10)**2
+	return Id, e_Id, C, e_C
+	# return A/(VVA/10)**2, eA/(VVA/10)**2
 
 def bg_over_scan(datfiles, plot=False):
 	# mscan = pd.read_csv(glob(f"{runpath}*.mscan")[0], skiprows=2)
@@ -255,8 +263,10 @@ for fpath in datfiles:
 	print(fpath.split("\\")[-1])
 	run_df = pd.read_csv(fpath)
 	if run_df[time_column_name][0] in dropped_list:
+		print(f'dropping time at {run_df[time_column_name][0]}')
 		continue
-	
+	# if run_df['cyc'].mean() >200 : 
+	# 	continue
 	# adjust time to be at centre of pulse
 	index = run_df[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
 	title = f'Wiggle Time: {index:0.2f} ms'
@@ -280,7 +290,7 @@ for fpath in datfiles:
 
 	# calculate GammaTilde
 	data['GammaTilde'] = GammaTilde(data['c5transfer'], 
-								 h*EF*1e3, 
+								 h*EF, 
 								 run_df['OmegaR'].values[0]*1e3,
 								 pulse_time/1e6)
 	detuning, c5transfer, c5gammatilde = data["detuning"], data["c5transfer"], data["GammaTilde"]
@@ -300,13 +310,10 @@ for fpath in datfiles:
 	})
 
 	if popts[0] > amp_cutoff: 
-		# C from amplitude
-		contact = Contact_from_amplitude(popts[0], perrs[0], VVA, h*EF*1e3, run_df['OmegaR'].values[0]*1e3, pulse_time/1e6)
-		# propagate error from bg to fitted amplitude error
-		# how do uncertainties work??
-		# if avg_dimer_spec != True:
-		#     perrs[0]  = np.sqrt(np.mean(data.ec5bg/data.c5bg)**2 + (perrs/popts)[0]**2) * popts[0]
-		df.loc[index] = np.concatenate([popts, perrs, contact]) # lists should be concatenated in order
+		# C/NkF from amplitude
+		Id, e_Id, contact, e_contact = \
+			Contact_from_amplitude(popts[0], perrs[0], EF, run_df['OmegaR'].mean(), pulse_time)
+		df.loc[index] = np.concatenate([popts, perrs, [contact, e_contact]]) # lists should be concatenated in order
 	else:
 		 dropped_list.append(index)
 		
@@ -409,7 +416,7 @@ ax1.tick_params(labelbottom=False)
 ax2 = fig.add_subplot(gs[2][0])
 ax2.errorbar(df.index, df.C,
 				yerr=df.eC )
-ax2.set(ylabel = r'transf/VVA$^2$')
+ax2.set(ylabel = r'$C/Nk_F$')
 ax2.tick_params(labelbottom=False)
 
 # plot fits to sine
@@ -532,7 +539,7 @@ ax_B.tick_params(labelbottom=False)
 # contact
 ax.errorbar(df.index, df.C, yerr=df.eC, marker='o', 
 			color='mediumvioletred')
-ax.set_ylabel(r'transf/VVA$^2$', color='mediumvioletred')
+ax.set_ylabel(r'$C/Nk_F$', color='mediumvioletred')
 ax.tick_params(labelbottom=False)
 
 
@@ -636,12 +643,15 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 			'Phase Shift C-B (rad)': phases[2],
 			'Phase Shift C-B err (rad)': ephases[2],
 			'Dropped Wiggle Times (ms)': str([float(x) for x in dropped_list]),
-			'Amplitude of Sin Fit of A': poptsA[0],
-			'Error of Amplitude of Sin Fit of A': perrsA[0],   
-			'Amplitude of Sin Fit of C': poptsC[0],
-			'Error of Amplitude of Sin Fit of C': perrsC[0],
+			'Sin Fit of A': [poptsA],
+			'Error of Sin Fit of A': [perrsA],   
+			'Sin Fit of C': [poptsC],
+			'Error of Sin Fit of C': [perrsC],
 			'Sin Fit of f0':[poptsf0],
-			'Error of Sin Fit of f0':[perrsf0]
+			'Error of Sin Fit of f0':[perrsf0],
+			'TRACK_BG':track_bg,
+			'FIX_WIDTH':fix_width,
+			'SINGLE_SHOT':single_shot
 		}, index=[run_id])  
 
 		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')

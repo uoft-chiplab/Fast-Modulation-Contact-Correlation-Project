@@ -89,10 +89,7 @@ class metadata:
         y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
         runpaths = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/*UShots*") # case insensitive on windows
 
-        if len(runpaths) > 1:
-            # get ushot run closest to run
-
-            # get list of all letters
+        if len(runpaths) > 1:            # get list of all letters
             letters = [os.path.basename(p)[0] for p in runpaths]
             # convert list to number of differences from run
             run_diffs = [abs(ord(letter.upper()) - ord(l.upper())) for letter in letters]
@@ -138,7 +135,7 @@ if __name__ == "__main__":
     # attributes
     runs = ["2025-09-24_E", 
             "2025-10-01_L",
-            "2025-10-17_E",
+            "2025-10-17_M",
             "2025-10-21_H", 
             "2025-10-23_R",
             "2025-10-23_S"]
@@ -147,7 +144,7 @@ if __name__ == "__main__":
 
     # change format later?
     drop_list = [
-          [],
+          [0.43],
           [0.29], 
           [],
           [],
@@ -158,7 +155,7 @@ if __name__ == "__main__":
     notes = [
         "good", 
         "good",
-        "?",
+        "single shot",
         "decent",
         "bad",
         "?"
