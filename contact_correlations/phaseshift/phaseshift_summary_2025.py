@@ -340,8 +340,9 @@ fig.tight_layout()
 
 fig, ax=plt.subplots()
 xd = data['ToTF']
-yd = np.ones(len(data))
+yd = data['EF']/h
 
 for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
 	ax.plot(x, y, color=color, marker=marker, mec=darken(color))
+ax.set(xlabel=r'$T/T_F$', ylabel=r'$E_F$')
 	
