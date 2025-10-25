@@ -1,0 +1,10 @@
+"""
+TODO: specify exact versions
+"""
+numpy
+pandas
+matplotlib
+scipy
+ast
+tabulate
+openpyxl
