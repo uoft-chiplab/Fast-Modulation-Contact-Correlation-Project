@@ -21,7 +21,7 @@ from preamble import *
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-10-17_M"
+run = "2025-10-23_R"
 meta_df = pd.read_csv('metadata.csv')
 meta_df = meta_df[meta_df['run']==run]
 # put this into metadata?
@@ -264,9 +264,9 @@ for fpath in datfiles:
 	if run_df[time_column_name][0] in dropped_list:
 		print(f'dropping time at {run_df[time_column_name][0]}')
 		continue
-	# if run_df['cyc'].mean() >200 : 
-	# 	continue
-	# adjust time to be at centre of pulse
+	if run_df['cyc'].mean() >130 : 
+		continue
+	#adjust time to be at centre of pulse
 	index = run_df[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
 	title = f'Wiggle Time: {index:0.2f} ms'
 	width = 1/pulse_time if fix_width else None

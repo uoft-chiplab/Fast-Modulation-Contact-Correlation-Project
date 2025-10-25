@@ -310,7 +310,7 @@ data['alpha_DC_amp'] = np.abs(field_to_alpha(202.14-data['B_amp']) - field_to_al
 for i, plot_param in enumerate(plot_params):
 	if i==0:
 		DC_amps = data['alpha_DC_amp']
-		DC_amps_err = data['alpha_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY
+		DC_amps_err = data['alpha_DC_amp']/6 # TODO: PROPAGATE UNCERTAINTY
 		data['alpha_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
 		data['alpha_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 		data['alpha_rel_amp'] = data['alpha_AC_amp']/data['alpha_DC_amp']
@@ -321,7 +321,7 @@ for i, plot_param in enumerate(plot_params):
 
 	else:
 		DC_amps = data['contact_DC_amp']
-		DC_amps_err = data['contact_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY
+		DC_amps_err = data['contact_DC_amp']/6 # TODO: PROPAGATE UNCERTAINTY
 		data['contact_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
 		data['contact_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 		data['contact_rel_amp'] = data['contact_AC_amp']/data['contact_DC_amp']
