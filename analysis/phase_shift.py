@@ -17,13 +17,22 @@ TO DO:
 
 # settings for directories, standard packages...
 from preamble import *
+from get_metadata import metadata
 
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-10-17_M"
+run = "2025-10-20_M"
 meta_df = pd.read_csv('metadata.csv')
 meta_df = meta_df[meta_df['run']==run]
+if meta_df.empty:
+    print(f'no meta data for {run}, running now')
+    m = metadata([run], [[]], True, "metadata.csv", "run from phase_shift.py")
+    m.output()
+    meta_df = pd.read_csv('metadata.csv')
+    # print(meta_df)
+    meta_df = meta_df[meta_df['run']==run]
+
 # put this into metadata?
 time_column_name = "Wiggle Time" # I think we can set this to be automatic 
 								# by looping through column names and finding which contains "time"
@@ -60,6 +69,7 @@ fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
 single_shot = True
 track_bg = True
+rerun = False
 
 def line(x, m, b):
 	return m*x+b
@@ -656,4 +666,7 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
 		print(f"✅ Appended run '{run_id}' to {csv_path}")
 	else:
-		print(f"⚠️ Run '{run_id}' already logged. Skipping append.")
+		if rerun: 
+			print(f'rerunning ')
+		else: 	
+			print(f"⚠️ Run '{run_id}' already logged. Skipping append.")

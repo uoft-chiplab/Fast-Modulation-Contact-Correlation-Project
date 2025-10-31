@@ -33,7 +33,9 @@ class metadata:
         returns all dat files for a given run, each corresponding to a different wiggle time
         """
         y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
+        print(y, m, d, l)
         runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}_*")[0]
+        # print(runpath)
         runname = os.path.basename(runpath)
         datfiles = glob(f"{runpath}/*=*.dat")
         
@@ -49,6 +51,7 @@ class metadata:
         r_df = pd.read_csv(r_paths[0])
 
         VVA = np.max(r_df.VVA)
+        # print(VVA)
         
         # get other metadata from run name
         wiggle_freq = float(r_name[:r_name.find("khz")].split("_")[-1])
@@ -87,6 +90,7 @@ class metadata:
     def get_ushots(self, run, j):
         # interpolate between values before and after 
         y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
+
         runpaths = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/*UShots*") # case insensitive on windows
 
         if len(runpaths) > 1:            # get list of all letters
@@ -95,28 +99,33 @@ class metadata:
             run_diffs = [abs(ord(letter.upper()) - ord(l.upper())) for letter in letters]
             i = np.argmin(run_diffs)
             u_run = os.path.basename(runpaths[i])
+            # print(u_run)
         
         else:
             u_run = os.path.basename(runpaths[0])
 
         u_path = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{u_run}/*.dat")[0]
+        # print(u_path)
         u_df = pd.read_csv(u_path)
+        # print(u_df)
 
         self.df.loc[j, ["ToTF", "EF", "N"]] = np.mean(u_df[["ToTF", "EF", "N"]], axis=0)
         self.df.loc[j, ["eToTF", "eEF", "eN"]] = np.std(u_df[["ToTF", "EF", "N"]], axis=0)/len(u_df)
 
         self.df.loc[j, ["wx", "wy", "wz"]] = np.mean(u_df[["wx", "wy", "wz"]], axis=0)
-
     def output(self):
-        if self.overwrite: # I'm not 100% sure this works all the time
+        if self.overwrite:
             if os.path.exists(self.fpath):
-                # make able to overwrite individual dfs?
                 old_df = pd.read_csv(self.fpath)
-                for i, r in enumerate(self.df.run):
+
+                for idx_new, r in enumerate(self.df.run):
                     if r in old_df.run.values:
-                        i = old_df.index[old_df['run'] == r].tolist()[0]
-                        old_df.loc[i] = self.df.loc[i]
-                        
+                        idx_old = old_df.index[old_df['run'] == r].tolist()[0]
+                        old_df.loc[idx_old] = self.df.loc[idx_new]
+                    else:
+                        # if run not found, append it
+                        old_df = pd.concat([old_df, self.df[self.df['run'] == r]])
+
                 old_df.to_csv(self.fpath, index=False)
 
             else:
@@ -135,6 +144,7 @@ if __name__ == "__main__":
     # attributes
     runs = ["2025-09-24_E", 
             "2025-10-01_L",
+            "2025-10-18_O",
             "2025-10-17_M",
             "2025-10-21_H", 
             "2025-10-23_R",
@@ -149,12 +159,14 @@ if __name__ == "__main__":
           [],
           [],
           [],
+          [],
           []
     ]
 
     notes = [
         "good", 
         "good",
+        "medium temp run single shot",
         "single shot",
         "decent",
         "bad",

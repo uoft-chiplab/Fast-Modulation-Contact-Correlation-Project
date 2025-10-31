@@ -179,7 +179,7 @@ ax.plot(x_theory, y_theory, ls=linestyle, marker=marker, color='black', label=la
 # plot data
 x_data = data['T']
 y_tau = (np.tan(y_data_C) / (data['freq']*1e3) / 2/np.pi) * 1e6 # us
-y_tau_err = 1/(np.cos(y_data_C))**2 * y_data_C_err # sec^2(x) * \delta x
+y_tau_err = 1/(np.cos(y_data_C))**2 * y_data_C_err / (data['freq']*1e3) / 2/np.pi * 1e6 # sec^2(x) * \delta x
 # in order to apply individual colors and markers, must loop 
 for x, y, ey,color, marker in zip(x_data, y_tau, y_tau_err, colors_data, markers_data):	
 	ax.errorbar(
@@ -206,7 +206,7 @@ ax.legend()
 # plot data
 x_data = (data['freq']*1000)/data['T'] # dimless
 y_taulag = contact_time_delay(y_data_C, 1/(data['freq'] * 1e3)) * 1e6 # us
-y_taulag_err = y_data_C_err / y_data_C * y_taulag /(2*np.pi)# TODO: check
+y_taulag_err = y_data_C_err / y_data_C * y_taulag # TODO: check
 # in order to apply individual colors and markers, must loop 
 for x, y, ey,color, marker in zip(x_data, y_taulag, y_taulag_err, colors_data, markers_data):	
 	ax.errorbar(
@@ -227,12 +227,15 @@ for j, BVT in enumerate(BVTs):
 
 # plot data
 y_scaledtau = y_taulag/y_tau
-y_scaledtau_err = np.sqrt((y_taulag_err / y_taulag)**2 + (y_tau_err/y_tau)**2) * y_scaledtau
+y_scaledtau_err = (np.cos(y_data_C)/np.sin(y_data_C) - y_data_C*(np.cos(y_data_C))**2)*y_data_C_err #np.sqrt((y_taulag_err / y_taulag)**2 ) * y_scaledtau
 # in order to apply individual colors and markers, must loop 
-for x, y, ey,color, marker in zip(x_data, y_scaledtau, y_scaledtau_err, colors_data, markers_data):	
-	ax.errorbar(
+for i, (x, y, ey,color, marker) in enumerate(zip(x_data, y_scaledtau, y_scaledtau_err, colors_data, markers_data)):	
+	try:
+		ax.errorbar(
 		x,y,yerr = ey,color=color,marker=marker, mec=darken(color)
 		)
+	except ValueError:
+		print(f'yerr negative: {y_scaledtau_err[i]:0.3f} for {i}')
 fig.suptitle(r'Summary: analyzing $\phi$')
 fig.tight_layout()
 
@@ -245,7 +248,7 @@ axs[0].set(
 )
 axs[1].set(
 	xlabel=r"$h\nu/k_BT$", 
-	   ylabel=r"Amplitude of Sin Fit to $C/Nk_F$",
+	   ylabel=r"$\tau = \sqrt{(C_{DC}/C_{AC} - 1)}/\omega$",
 )
 axs[2].set(
 	xlabel=r"$h\nu/k_BT$", 
@@ -266,10 +269,12 @@ for i, plot_param in enumerate(plot_params):
 	# creates lists of only popt[0] and perr[0] (amplitude)
 	y_amps = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
 	yerr = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
-	for x, y, ey,color, marker in zip(x_data, y_amps, yerr, colors_data, markers_data):	
-		axs[i].errorbar(
-		x,y,yerr= ey,color=color,marker=marker, mec=darken(color)
-		)
+	if i != 1:
+		for x, y, ey,color, marker in zip(x_data, y_amps, yerr, colors_data, markers_data):	
+			axs[i].errorbar(
+			x,y,yerr= ey,color=color,marker=marker, mec=darken(color)
+			)
+ax_tau = axs
 
 for b, BVT in enumerate(BVTs):
 	axs[2].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.ToTF),
@@ -335,6 +340,7 @@ for i, plot_param in enumerate(plot_params):
 		axs[i+2].errorbar(
 		x,y,yerr= ey,color=color,marker=marker, mec=darken(color)
 		)
+
 fig.suptitle(r'Summary: analyzing amplitude')
 fig.tight_layout()
 
@@ -345,4 +351,9 @@ yd = data['EF']/h
 for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
 	ax.plot(x, y, color=color, marker=marker, mec=darken(color))
 ax.set(xlabel=r'$T/T_F$', ylabel=r'$E_F$')
-	
+
+x_data = (data['freq']*1000)/data['T']	
+y_data = np.sqrt((1/data['contact_rel_amp']) - 1)/(data['Modulation Freq (kHz)'])	
+for x, y,color, marker in zip(x_data, y_data, colors_data, markers_data):	
+	ax_tau[1].plot(x, y, color=color, marker=marker, mec=darken(color))
+
