@@ -4,3 +4,4 @@
 *.pyc
 *.venv
 *.pkl
+analysis/__pycache__/preamble.cpython-312.pyc
