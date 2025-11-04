@@ -1,0 +1,28 @@
+'''
+Created on 03-Nov-2025
+This script explores the linear response transfer and systematics of
+a short (20 us) Blackman pulse using HFT at various detunings.
+This is part of an investigation in using HFT for dissipation measurements.
+'''
+import os
+import sys
+root_project = os.path.dirname(os.getcwd())
+
+# Fast-Modulation-Contact-Correlation-Project\analysis
+module_folder = os.path.join(root_project, "analysis")
+if module_folder not in sys.path:
+	sys.path.append(module_folder)
+# settings for directories, standard packages...
+from preamble import *
+
+run = "2025-11-03_K"
+# find data files
+y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
+runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
+datfiles = glob(f"{runpath}*=*.dat")
+
+for datfile in datfiles:
+	data = Data(datfile, path=os.path.dirname(datfile))
+	
+    
+	
