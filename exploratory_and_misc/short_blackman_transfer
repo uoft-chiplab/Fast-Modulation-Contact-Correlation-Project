@@ -20,9 +20,28 @@ run = "2025-11-03_K"
 y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 datfiles = glob(f"{runpath}*=*.dat")
-
+res_bc = 47.2227 # MHz at unitarity
+ff = 0.88 # I hate this, TODO FIX
+fig, ax = plt.subplots()
+ax.set(xlabel='VVA', ylabel=r'Transfer $\alpha$')
 for datfile in datfiles:
 	data = Data(datfile, path=os.path.dirname(datfile))
+	if data.data["freq"].values[0] < 47:
+		continue # I messed up in one run
 	
-    
+	# calc detuning and fudged c9
+	data.data["detuning"] = data.data["freq"] - res_bc
+	data.data["c9"] = data.data["c9"] * ff
+
+	# this uses the new function inside the Data class
+	df = data.find_transfer()
+
+	ax.plot(df['VVA'], df['c5transfer'], ls='', marker='o', label=round(df['detuning'].values[0],2))
+
+ax.legend(title='Detuning [MHz]')
+
+
+	
+
+
 	
