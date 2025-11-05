@@ -57,7 +57,7 @@ barnu = 377 # THIS IS JUST AN ESTIMATE; NOT VALID FOR LOOSE ODTs
 num = 50
 
 # set color via normalized ToTF
-xs = np.linspace(data['ToTF'].min(), data['ToTF'].max(), 10)
+xs = np.linspace(data['T'].min(), data['T'].max(), 10)
 norm = colors.Normalize(vmin = xs.min(), vmax = xs.max())
 cmap = cm.get_cmap('RdYlBu').reversed()
 def get_color(value, alpha=1):
@@ -147,14 +147,14 @@ for j, BVT in enumerate(BVTs):
 	EF_kHz = (BVT.T / BVT.ToTF) / 1e3
 	linestyle = ':'
 	marker =''
-	label = f'ToTF={BVT.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, ls=linestyle, marker=marker, color=get_color(BVT.ToTF), label=label)
+	label = f'ToTF={BVT.T:.2f}, EF={EF_kHz:.0f} kHz'
+	ax.plot(x_theory, y_theory, ls=linestyle, marker=marker, color=get_color(BVT.T), label=label)
 
 # Plot data
 x_data = (data['Modulation Freq (kHz)']*1000)/data['T']
 y_data_C = data['Phase Shift C-B (rad)']
 y_data_C_err = data['Phase Shift C-B err (rad)']
-colors_data = get_color(data['ToTF'])
+colors_data = get_color(data['T'])
 colors_data = [tuple(sublist) for sublist in colors_data] 
 markers_data = [get_marker(x) for x in (data['Modulation Freq (kHz)'])]
 
@@ -198,10 +198,10 @@ for j, BVT in enumerate(BVTs):
 	linestyle = ':'
 	marker =''
 	label = f'ToTF={BVT.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, color=get_color(BVT.ToTF), marker=marker, ls=linestyle)
+	ax.plot(x_theory, y_theory, color=get_color(BVT.T), marker=marker, ls=linestyle)
 	if j ==0 or j==(len(BVTs)-1):
 		ax.hlines(y=BVT.tau * 1e6, xmin=min(x_theory), xmax=max(x_theory), 
-			ls='--',color=get_color(BVT.ToTF), label=rf'$\tau = {BVT.tau*1e6:.0f} us, T/T_F = {BVT.ToTF:.2f}$')
+			ls='--',color=get_color(BVT.T), label=rf'$\tau = {BVT.tau*1e6:.0f} us, T/T_F = {BVT.ToTF:.2f}$')
 ax.legend()
 # plot data
 x_data = (data['freq']*1000)/data['T'] # dimless
@@ -223,7 +223,7 @@ for j, BVT in enumerate(BVTs):
 	linestyle = ':'
 	marker =''
 	label = f'ToTF={BVT.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, color=get_color(BVT.ToTF), marker=marker, ls=linestyle)
+	ax.plot(x_theory, y_theory, color=get_color(BVT.T), marker=marker, ls=linestyle)
 
 # plot data
 y_scaledtau = y_taulag/y_tau
@@ -277,10 +277,10 @@ for i, plot_param in enumerate(plot_params):
 ax_tau = axs
 
 for b, BVT in enumerate(BVTs):
-	axs[2].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.ToTF),
+	axs[2].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.T),
 		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
 		  )
-	axs[3].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.ToTF),
+	axs[3].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.T),
 		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
 		  )
 
@@ -344,16 +344,27 @@ for i, plot_param in enumerate(plot_params):
 fig.suptitle(r'Summary: analyzing amplitude')
 fig.tight_layout()
 
-fig, ax=plt.subplots()
-xd = data['ToTF']
+fig, ax=plt.subplots(2,1)
+xd = data['T']
 yd = data['EF']/h
 
 for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
-	ax.plot(x, y, color=color, marker=marker, mec=darken(color))
-ax.set(xlabel=r'$T/T_F$', ylabel=r'$E_F$')
+	ax[0].plot(x, y, color=color, marker=marker, mec=darken(color))
+ax[0].set(xlabel=r'$T$', ylabel=r'$E_F$')
 
-x_data = (data['freq']*1000)/data['T']	
+xd = data['ToTF']
+
+for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
+	ax[1].plot(x, y, color=color, marker=marker, mec=darken(color))
+ax[1].set(xlabel=r'$T/TF$', ylabel=r'$E_F$')
+
+fig.tight_layout()
+
+x_data = data['T']	
 y_data = np.sqrt((1/data['contact_rel_amp']) - 1)/(data['Modulation Freq (kHz)'])	
 for x, y,color, marker in zip(x_data, y_data, colors_data, markers_data):	
 	ax_tau[1].plot(x, y, color=color, marker=marker, mec=darken(color))
+	ax_tau[1].set(
+		xlabel = 'T (Hz)'
+	)
 
