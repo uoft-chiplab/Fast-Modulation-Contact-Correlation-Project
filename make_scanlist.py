@@ -1,10 +1,21 @@
+import os
+import sys
+# Always base paths on this file's location, not the working directory
+this_file = os.path.abspath(__file__)
+root_project = os.path.dirname(this_file)  
+root_analysis = os.path.dirname(root_project)
+library_folder = os.path.join(root_analysis, "analysis")
+if library_folder not in sys.path:
+	sys.path.append(library_folder)	
+root = os.path.dirname(root_analysis)
 import numpy as np
 import matplotlib.pyplot as plt 
 import pandas as pd
-import sys 
 import random
-import os
 from scipy.interpolate import interp1d
+from library import FreqMHz
+
+
 # settings for directories, standard packages...
 
 def sinc2(x, A, x0, sigma, C):
@@ -103,21 +114,24 @@ def generate_singleshot_scanlist(f0, VVA, n_peak, n_bg, wings=False, randomize=T
 
 	return scanlist
 
+
 export = True
 # randomizes order freqs in scan list for each time
-randomize = False
+randomize = True
 # single shot scan list vs. multiple detunings
 singleshot=False
-
+# HFT single shot list
+HFT = True
+detuning = 0.150 # MHz
 # times
-pulsetime=0.010
-t = np.array([ 0.225, 0.235, 0.275, 0.285
+pulsetime=0.020
+t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
 					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
 np.random.shuffle(t)
 f = 10 #kHz
 amp = 1.8 # Vpp
-vva= 9
-reps = 3
+vva= 10
+reps = 7
 
 ###dimer is formed in the middle of the pulsetime
 t_pulse = t - pulsetime/2
@@ -171,7 +185,6 @@ def fit_fixedSinkHz(t, y, run_freq, eA, p0=None):
 
 	return popts, perrs, FixedSinkHz
 field_params = field_cal_df[['B_amp', 'B_phase', 'B_offset']].values[0]
-# field_params[1] += np.pi # add pi phase shift to comapre to freq
 
 popts, pcov, sin = fit_fixedSinkHz(t, np.sin((f*2*np.pi)*t-field_params[1]), f, 0, p0=[0.07,6,202.1])
 
@@ -218,38 +231,64 @@ else :
 B_to_f0 = interp1d(xs, ys, fill_value='extrapolate')
 predicted_f0s_list = B_to_f0(Bs)
 
-#generate scanlist for each f0
-scanlist = []   
+if HFT == True:
+	scanlist_df = pd.DataFrame({'field':Bs})
+	# scanlist_df['freq_res'] = FreqMHz(scanlist_df['field'], 9/2, -5/2, 9/2, -7/2)
+	scanlist_df['freq'] = FreqMHz(scanlist_df['field'], 9/2, -5/2, 9/2, -7/2) + detuning
+	scanlist_df['VVA'] = vva
+	chargetimes = 1 - t_pulse - pulsetime - wait
+	scanlist_df['chargetime'] = chargetimes
+	scanlist_df['wiggletime'] = t_pulse
+	scanlist_df = pd.concat([scanlist_df] * reps, ignore_index=True)
 
-for f0 in predicted_f0s_list:
-	if singleshot == True:
-		scanlist.append(generate_singleshot_scanlist(f0, vva, 15, 7, wings = None, randomize=True))
-	else:
-		scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 7, 0, 2, 1, reps,randomize=True))
-scanlist = np.array(scanlist)
-SHOW_SCANLIST= True
-if SHOW_SCANLIST:
-	fig, ax = plt.subplots()
-	for i, fs in enumerate(scanlist):
-		freqs = fs[:,0]
-		filter_bg = np.where(freqs!=43)
-		filtered_freqs = freqs[filter_bg]
-		ax.plot(filtered_freqs, np.ones(len(filtered_freqs))*(i+1), marker="o", ls="", label=f't={t[i]:.3f} ms, f0={predicted_f0s_list[i]:.3f} MHz')
-	ax.set(xlabel="Freq (MHz)", ylabel="Scan #")
-	# ax.legend()
-####exporting scan list to excel
-# all_scans = []
-# f0s_repeated = f0slist * n_dimer_repeat
+	bg_df = scanlist_df.copy()
+	bg_df['VVA']=0
+	bg_df_repeated=pd.concat([bg_df]*reps, ignore_index=True)
 
-chargetimes = 1 - t_pulse - pulsetime - wait
-full_time_arr = [x for x in t_pulse for _ in range(np.shape(scanlist)[1])]
-full_chargetime_arr = [x for x in chargetimes for _ in range(np.shape(scanlist)[1])]
-full_time_arrs_2D = np.column_stack((full_chargetime_arr, full_time_arr))
-scanlist_2D = scanlist.reshape(-1, scanlist.shape[2])
-final_array = np.concatenate((scanlist_2D, full_time_arrs_2D), axis=1)
-final_df = pd.DataFrame(final_array)
-if export:
-	final_df.to_excel(fname, index=False)
+	final_df = pd.concat([scanlist_df, bg_df])
+	if randomize:
+		final_df = final_df.sample(frac=1).reset_index(drop=True) # randomize 100% of rows
+
+	if export:
+		final_df.to_excel(fname, index=False)
+else:
+	#generate scanlist for each f0
+	scanlist = []   
+
+	for f0 in predicted_f0s_list:
+		if singleshot == True:
+			scanlist.append(generate_singleshot_scanlist(f0, vva, 15, 7, wings = None, randomize=True))
+		elif HFT == True:
+			continue
+
+		else:
+			scanlist.append(generate_spectra_scanlist(pulsetime*1000, f0, vva, 7, 0, 2, 1, reps,randomize=True))
+
+
+	scanlist = np.array(scanlist)
+	SHOW_SCANLIST= True
+	if SHOW_SCANLIST:
+		fig, ax = plt.subplots()
+		for i, fs in enumerate(scanlist):
+			freqs = fs[:,0]
+			filter_bg = np.where(freqs!=43)
+			filtered_freqs = freqs[filter_bg]
+			ax.plot(filtered_freqs, np.ones(len(filtered_freqs))*(i+1), marker="o", ls="", label=f't={t[i]:.3f} ms, f0={predicted_f0s_list[i]:.3f} MHz')
+		ax.set(xlabel="Freq (MHz)", ylabel="Scan #")
+		# ax.legend()
+	####exporting scan list to excel
+	# all_scans = []
+	# f0s_repeated = f0slist * n_dimer_repeat
+
+	chargetimes = 1 - t_pulse - pulsetime - wait
+	full_time_arr = [x for x in t_pulse for _ in range(np.shape(scanlist)[1])]
+	full_chargetime_arr = [x for x in chargetimes for _ in range(np.shape(scanlist)[1])]
+	full_time_arrs_2D = np.column_stack((full_chargetime_arr, full_time_arr))
+	scanlist_2D = scanlist.reshape(-1, scanlist.shape[2])
+	final_array = np.concatenate((scanlist_2D, full_time_arrs_2D), axis=1)
+	final_df = pd.DataFrame(final_array)
+	if export:
+		final_df.to_excel(fname, index=False)
 
 # blame KX for this
 # ####exporting scan list to excel
