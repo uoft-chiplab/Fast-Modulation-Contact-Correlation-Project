@@ -42,14 +42,15 @@ def contact_from_slope(EF, trf, detuning, slope):
 	return 2**(3/2) * np.pi * (2 * np.pi * EF)/trf * (detuning/EF)**(3/2) * slope
 
 runname = "2025-11-04_F"
+runname = "2025-11-05_Q"
 trf = 20e-6  # pulse time in seconds
 # est
 EF = 9459  #Hz  # 2025-11-05_Q
-EF = 10090  # 2025-11-04_F
+# EF = 10090  # 2025-11-04_F
 ToTF = 0.2819
 detuning = 150e3  # Hz
 Num = 11280  # 2025-11-05_Q
-Num = 13936  # 2025-11-04_F
+# Num = 13936  # 2025-11-04_F
 # find data files
 y, m, d, l = runname[0:4], runname[5:7], runname[8:10], runname[-1]
 runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
@@ -57,7 +58,7 @@ datfiles = glob(f"{runpath}*=*.dat")
 
 # figure for data and sat curves
 fig, ax = plt.subplots()
-ax.set(xlabel='OmegaR2 [Hz^2]', ylabel=r'$\alpha_\mathrm{HFT}$', ylim=[-0.01, 0.14])
+ax.set(xlabel='OmegaR2 [1/s^2]', ylabel=r'$\alpha_\mathrm{HFT}$', ylim=[-0.01, 0.14])
 
 # figure for holding the fit parameters
 fig2, axs = plt.subplots(1, 3, figsize=(8,4))

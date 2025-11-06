@@ -10,7 +10,7 @@ from get_metadata import metadata
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-06_E"
+run = "2025-11-06_H"
 meta_df = pd.read_csv('metadata.csv')
 meta_df = meta_df[meta_df['run']==run]
 if meta_df.empty:
@@ -26,16 +26,13 @@ HFT_or_dimer = "HFT"
 pulse_envelope = "blackman" # "square"
 pulse_area_corr = np.sqrt(0.31) if pulse_envelope == "blackman" else 1
 wiggle_amp = meta_df['Vpp'].values[0]  # Vpp
-dropped_list = np.fromstring(meta_df['drop'].values[0].strip('[]'), sep= ' ') # list of time stamps to drop
+dropped_list = np.fromstring(meta_df['drop'].values[0].strip("[]"), sep= ', ') # list of time stamps to drop
 pulse_time = meta_df['pulse_time'].values[0] # 
 wiggle_freq = meta_df['freq'].values[0] # kHz
 VVA = meta_df['VVA'].values[0] # assumes just the max VVA for everything
 ### TODO: incorporate into metadata
 EF = meta_df['EF'].values[0]/h # Hz
-# this fudges the Rabi calibrated at 47 MHz for the attenuation at 43, but a calibration directly at 43 would be better
-RabiperVpp47 = 13.05 / 0.500 # kHz/Vpp on scope 2025-10-21
-e_RabiperVpp47 = 0.22
-phaseO_OmegaR = lambda VVA, freq: 2*pi*RabiperVpp47 * Vpp_from_VVAfreq(VVA, freq) * pulse_area_corr
+
 xlabel = 'Times [ms]'
 # Load CCC data for f0 to B conversion
 CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', 'f0'], delimiter='\s')
@@ -267,12 +264,12 @@ for fpath in datfiles:
 		continue
 
 	# adjust time to be at centre of pulse
-	index = data.data[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
-	title = f'Wiggle Time: {index:0.2f} ms'
+	middle_pulse_time = data.data[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
+	title = f'Mid Pulse Time: {middle_pulse_time:0.2f} ms'
 	width = 1/pulse_time if fix_width else None
-	data.data['OmegaR'] = phaseO_OmegaR(VVA, data.data['freq'])
 	data.data['EF']=EF # Hz
 	data.data['trf']=pulse_time / 1e6 # s
+	data.data["middle_pulse_time"] = middle_pulse_time
 
 	if HFT_or_dimer == "HFT":
 		data.analysis(pulse_type="blackman")
@@ -306,7 +303,7 @@ for fpath in datfiles:
 
 		# Save for later plotting
 		valid_results.append({
-			"time":index, 
+			"time":middle_pulse_time, 
 			"detuning": detuning,
 			"c5transfer": c5transfer,
 			"sinc2": sinc2,
@@ -322,9 +319,8 @@ for fpath in datfiles:
 			# C/NkF from amplitude
 			Id, e_Id, contact, e_contact = \
 				Contact_from_amplitude(popts[0], perrs[0], EF, data.data['OmegaR'].mean(), pulse_time)
-			df.loc[index] = np.concatenate([popts, perrs, [contact, e_contact]]) # lists should be concatenated in order
-		else:
-			dropped_list.append(index)
+			df.loc["middle_pulse_time"] = np.concatenate([popts, perrs, [contact, e_contact]]) # lists should be concatenated in order
+
 
 df = pd.concat(df_list, ignore_index=True)
 # field_df.dropna(how='all').to_csv(runpath + f'DC_field_cal.csv',  index=None, sep=',')      
@@ -422,19 +418,20 @@ gs = [gridspec.GridSpecFromSubplotSpec(
 
 # peak transfer
 ax0 = fig.add_subplot(gs[0][0])
-ax0.errorbar(df[time_column_name], df.A, yerr=df.eA)
+ax0.errorbar(df["middle_pulse_time"], df.A, yerr=df.eA)
 ax0.set_ylabel("peak transfer")
 ax0.tick_params(labelbottom=False)
 
 # f0
 ax1 = fig.add_subplot(gs[1][0])
-ax1.errorbar(df[time_column_name], df.x0, yerr=df.ex0 )
+ax1.errorbar(df["middle_pulse_time"], df.x0, yerr=df.ex0 )
 ax1.set_ylabel("f0 [MHz]")
 ax1.tick_params(labelbottom=False)
+ax1.invert_yaxis()
 
 # contact
 ax2 = fig.add_subplot(gs[2][0])
-ax2.errorbar(df[time_column_name], df.C,
+ax2.errorbar(df["middle_pulse_time"], df.C,
 				yerr=df.eC )
 ax2.set(ylabel = r'$C/Nk_F$')
 ax2.tick_params(labelbottom=False)
@@ -442,12 +439,12 @@ ax2.tick_params(labelbottom=False)
 # plot fits to sine
 ###Sine fits for the wiggle data pts 
 # sine should be same for both data
-poptsA, perrsA, plabelA, sine = fit_fixedSinkHz(df[time_column_name], df.A, wiggle_freq, df.eA)
-poptsf0, perrsf0, plabelf0, __ = fit_fixedSinkHz(df[time_column_name], df.x0, wiggle_freq, df.ex0)
-poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df[time_column_name], df.C, wiggle_freq, df.eC)
+poptsA, perrsA, plabelA, sine = fit_fixedSinkHz(df["middle_pulse_time"], df.A, wiggle_freq, df.eA)
+poptsf0, perrsf0, plabelf0, __ = fit_fixedSinkHz(df["middle_pulse_time"], df.x0, wiggle_freq, df.ex0)
+poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df["middle_pulse_time"], df.C, wiggle_freq, df.eC)
 
 ###plotting sin fit to 1/A and f0 and C 
-ts = np.linspace(min(df[time_column_name]), max(df[time_column_name]), 100)
+ts = np.linspace(min(df["middle_pulse_time"]), max(df["middle_pulse_time"]), 100)
 ax0.plot(ts, sine(ts, *poptsA), ls="-", marker="", 
 			label=plabelA
 			)
@@ -490,9 +487,9 @@ resid0.axhline(0, ls="--", color="lightgrey", marker="")
 resid1.axhline(0, ls="--", color="lightgrey", marker="")
 resid2.axhline(0, ls="--", color="lightgrey", marker="")
 
-resid0.errorbar(df[time_column_name], df.A-sine(df[time_column_name], *poptsA), yerr=df.eA, color='mediumvioletred')
-resid1.errorbar(df[time_column_name], df.x0-sine(df[time_column_name], *poptsf0), yerr=df.ex0, color='mediumvioletred')
-resid2.errorbar(df[time_column_name], df.C-sine(df[time_column_name], *poptsC), df.eC, color='mediumvioletred')
+resid0.errorbar(df["middle_pulse_time"], df.A-sine(df["middle_pulse_time"], *poptsA), yerr=df.eA, color='mediumvioletred')
+resid1.errorbar(df["middle_pulse_time"], df.x0-sine(df["middle_pulse_time"], *poptsf0), yerr=df.ex0, color='mediumvioletred')
+resid2.errorbar(df["middle_pulse_time"], df.C-sine(df["middle_pulse_time"], *poptsC), df.eC, color='mediumvioletred')
 
 resid0.set_xlabel("time (ms)")
 resid1.set_xlabel("time (ms)")
@@ -554,13 +551,13 @@ ax = fig.add_subplot(gs[0])
 
 # B field on secondary axis
 ax_B = ax.twinx()
-ax_B.errorbar(df[time_column_name], df.B, yerr=df.eB, marker='s', 
+ax_B.errorbar(df["middle_pulse_time"], df.B, yerr=df.eB, marker='s', 
 			color='cornflowerblue', markerfacecolor='white')
 ax_B.set_ylabel("B [G]", color='cornflowerblue')
 ax_B.tick_params(labelbottom=False)
 
 # contact
-ax.errorbar(df[time_column_name], df.C, yerr=df.eC, marker='o', 
+ax.errorbar(df["middle_pulse_time"], df.C, yerr=df.eC, marker='o', 
 			color='mediumvioletred')
 ax.set_ylabel(r'$C/Nk_F$', color='mediumvioletred')
 ax.tick_params(labelbottom=False)
@@ -569,11 +566,11 @@ ax.tick_params(labelbottom=False)
 # plot fits to sine
 ###Sine fits for the wiggle data pts 
 # sine should be same for both data
-poptsB, perrsB, plabelB, __ = fit_fixedSinkHz(df[time_column_name], df.B, wiggle_freq, df.eB, param_labels=[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"])
-poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df[time_column_name], df.C, wiggle_freq, df.eC, param_labels=[r"$C_\mathrm{amp}$", r"$\phi$", r"$C_\mathrm{eq}$"])
+poptsB, perrsB, plabelB, __ = fit_fixedSinkHz(df["middle_pulse_time"], df.B, wiggle_freq, df.eB, param_labels=[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"])
+poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df["middle_pulse_time"], df.C, wiggle_freq, df.eC, param_labels=[r"$C_\mathrm{amp}$", r"$\phi$", r"$C_\mathrm{eq}$"])
 
 ###plotting sin fit C 
-ts = np.linspace(min(df[time_column_name]), max(df[time_column_name]), 100)
+ts = np.linspace(min(df["middle_pulse_time"]), max(df["middle_pulse_time"]), 100)
 ax.plot(ts, sine_C(ts, *poptsC), ls="-", color='mediumvioletred',
 		marker="", label=plabelC)
 ax_B.plot(ts, sine(ts, *poptsB), ls="-", color='cornflowerblue',	
@@ -601,8 +598,8 @@ resid = fig.add_subplot(gs[1], sharex=ax)
 
 resid.axhline(0, ls="--", color="lightgrey", marker="")
 
-resid.errorbar(df[time_column_name], df.C-sine(df[time_column_name], *poptsC), df.eC, color='mediumvioletred')
-resid.errorbar(df[time_column_name], df.B-sine(df[time_column_name], *poptsB), yerr=df.eB, 
+resid.errorbar(df["middle_pulse_time"], df.C-sine(df["middle_pulse_time"], *poptsC), df.eC, color='mediumvioletred')
+resid.errorbar(df["middle_pulse_time"], df.B-sine(df["middle_pulse_time"], *poptsB), yerr=df.eB, 
 			marker='s', color='cornflowerblue', markerfacecolor='white')
 
 resid.set_xlabel("Time (ms)")
@@ -650,7 +647,7 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 
 	if os.path.exists(csv_path):
 		existing_df = pd.read_csv(csv_path, index_col=0)
-		already_logged = run_id in existing_df[time_column_name]
+		already_logged = run_id in existing_df["middle_pulse_time"]
 	else:
 		already_logged = False
 	
