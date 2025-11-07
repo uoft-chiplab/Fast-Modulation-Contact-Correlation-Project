@@ -125,10 +125,11 @@ HFT = True
 detuning = 0.150 # MHz
 # times
 pulsetime=0.020
-t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
-					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
+t = np.array([0.32, 0.34, 0.36, 0.38, 0.40, 0.42, 0.44, 0.46, 0.48])
+# t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
+# 					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
 np.random.shuffle(t)
-f = 10 #kHz
+f = 6 #kHz
 amp = 1.8 # Vpp
 vva= 10
 reps = 7
@@ -149,9 +150,9 @@ field_cal_df = field_cal_df[(field_cal_df['wiggle_freq'] == f) & (field_cal_df['
 # also get the experimental phase shift results for f0
 results_df = pd.read_csv(os.path.join(os.getcwd(), 'contact_correlations//phaseshift//phase_shift_2025_summary.csv'))
 # thisis because I annoyingly saved the result as a string of a list and need to split it
-results_df['Sin Fit of f0'] = results_df['Sin Fit of f0'].apply(lambda x: x[1:-1].split(' '))
-lst = results_df[(results_df['Modulation Freq (kHz)']==f) & (results_df['Modulation Amp (Vpp)']==amp)]['Sin Fit of f0'].values[0]
-f0_fit = [float(i) for i in lst]
+# results_df['Sin Fit of f0'] = results_df['Sin Fit of f0'].apply(lambda x: x[1:-1].split(' '))
+# lst = results_df[(results_df['Modulation Freq (kHz)']==f) & (results_df['Modulation Amp (Vpp)']==amp)]['Sin Fit of f0'].values[0]
+# f0_fit = [float(i) for i in lst]
 
 ###plotting field calibration 
 t2 = np.linspace(min(t), max(t), 100)
@@ -219,7 +220,7 @@ if use_static_cal:
 else :
 	# linear interpolation from AC measurement
 	xs = [Bs.min(), Bs.max()]
-	ys = [f0_fit[2] + f0_fit[0], f0_fit[2]-f0_fit[0]] # [const + amp, const-amp]
+	# ys = [f0_fit[2] + f0_fit[0], f0_fit[2]-f0_fit[0]] # [const + amp, const-amp]
 
 # #dimer center pts freqs based on 2025-10-01_L run 
 # xs = [4.008814, 4.008802, 4.002268, 3.99069,3.990477, 3.973251, 3.973131, 3.960835,   
@@ -228,8 +229,9 @@ else :
 # 	  202.14250352617975, 202.14250352617975, 202.20524934772862, 
 # 		  202.20524934772862, 202.24195852851076,  202.24195852851076]
 # xs.reverse() # higher Eb = lower field
-B_to_f0 = interp1d(xs, ys, fill_value='extrapolate')
-predicted_f0s_list = B_to_f0(Bs)
+
+# B_to_f0 = interp1d(xs, ys, fill_value='extrapolate')
+# predicted_f0s_list = B_to_f0(Bs)
 
 if HFT == True:
 	scanlist_df = pd.DataFrame({'field':Bs})

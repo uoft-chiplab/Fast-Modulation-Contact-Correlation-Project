@@ -163,21 +163,14 @@ num_for_long_lists = 100
 B_list = list(map(float, ToTF_11_05_Q_dict.keys()))
 Bxs = np.linspace(min(B_list), max(B_list), num_for_long_lists)
 temps_list = ToTF_list = [value['ToTF'] for value in ToTF_11_05_Q_dict.values()]
-temps_longlist = np.linspace(min(temps_list), max(temps_list), num_for_long_lists)
 EF_list = [value['EF'] for value in ToTF_11_05_Q_dict.values()]
-EF_longlist = np.linspace(min(EF_list), max(EF_list), num_for_long_lists)
 
 harmonic_C_calc_list = []
-harmonic_C_calc_longlist = []
+
 
 for t, ef in zip(temps_list, EF_list):
 	C_calc = calc_contact(t, ef, 377)
 	harmonic_C_calc_list.append(C_calc[0])
-
-#actually i dont think this makes sense 
-# for t, ef in zip(temps_longlist, EF_longlist):
-# 	C_calc = calc_contact(t, ef, 377)
-# 	harmonic_C_calc_longlist.append(C_calc[0])
 
 popt_calc_C_harmonic, pcovt_calc_C_harmonic = curve_fit(Linear, B_list, harmonic_C_calc_list, 
 					#    sigma=results_df['e_C']
@@ -185,15 +178,10 @@ popt_calc_C_harmonic, pcovt_calc_C_harmonic = curve_fit(Linear, B_list, harmonic
 perrt_calc_C_harmonic = np.sqrt(np.diag(pcovt_calc_C_harmonic))
 
 ContactInterpolation_list = []
-ContactInterpolation_longlist = []
 
 for t in temps_list:
     contactinterp = ContactInterpolation(t)
     ContactInterpolation_list.append(contactinterp)
-
-# for t in temps_longlist:
-#     contactinterp = ContactInterpolation(t)
-#     ContactInterpolation_longlist.append(contactinterp)
 
 popt_calc_C, pcovt_calc_C = curve_fit(Linear, B_list, ContactInterpolation_list, 
 					#    sigma=results_df['e_C']
@@ -205,11 +193,9 @@ ax.plot(Bs, Linear(Bs, *popt), '--', color='tab:blue')
 ax.errorbar(results_df['Bfield'], results_df['C'], results_df['e_C'], **styles[0], label = r'Measured')
 
 ax.plot(B_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
-# ax.plot(Bxs,ContactInterpolation_longlist, marker='', ls = '--')
 ax.plot(Bxs,Linear(Bxs,*popt_calc_C), marker='', ls = '--', color='hotpink')
 
 ax.plot(B_list, harmonic_C_calc_list, color='salmon', markeredgecolor='maroon', label = r'Harmonic')
-# ax.plot(Bxs, harmonic_C_calc_longlist, marker='', ls = '--', color='tomato')
 ax.plot(Bxs,Linear(Bxs,*popt_calc_C_harmonic), marker='', ls = '--', color='tomato')
 
 ax.plot()
