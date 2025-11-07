@@ -8,6 +8,7 @@ First pass at fitting saturation curves to HFT-short-blackman data around unitar
 import os
 import sys
 
+
 # paths
 root_project = os.path.dirname(os.getcwd())
 # Fast-Modulation-Contact-Correlation-Project\analysis
@@ -17,6 +18,8 @@ if module_folder not in sys.path:
 # settings for directories, standard packages...
 from preamble import *
 from library import paper_settings, styles, colors
+from contact_correlations.contact_tabulated import ContactInterpolation
+from contact_correlations.UFG_analysis import BulkViscTrap, calc_contact
 from scipy.optimize import curve_fit
 ### fit functions
 def Saturation(x, A, x0):
@@ -48,6 +51,16 @@ trf = 20e-6  # pulse time in seconds
 EF = 9459  #Hz  # 2025-11-05_Q
 # EF = 10090  # 2025-11-04_F
 ToTF = 0.2819
+
+ToTF_11_05_Q_dict = {
+    '202.24': {'ToTF': 0.253, 'EF': 9901},   
+    '202.14': {'ToTF': 0.267, 'EF': 9876},
+	'202.04': {'ToTF': 0.303, 'EF': 9770},
+
+}
+
+barnu = 377 # THIS IS JUST AN ESTIMATE; NOT VALID FOR LOOSE ODTs
+
 detuning = 150e3  # Hz
 Num = 11280  # 2025-11-05_Q
 # Num = 13936  # 2025-11-04_F
@@ -145,9 +158,63 @@ perr = np.sqrt(np.diag(pcov))
 fig, ax = plt.subplots(figsize=(4, 4))
 ax.set(xlabel='B field [G]', ylabel=r'Contact, $\tilde C$')
 
+###Contacts from Tilman 
+num_for_long_lists = 100
+B_list = list(map(float, ToTF_11_05_Q_dict.keys()))
+Bxs = np.linspace(min(B_list), max(B_list), num_for_long_lists)
+temps_list = ToTF_list = [value['ToTF'] for value in ToTF_11_05_Q_dict.values()]
+temps_longlist = np.linspace(min(temps_list), max(temps_list), num_for_long_lists)
+EF_list = [value['EF'] for value in ToTF_11_05_Q_dict.values()]
+EF_longlist = np.linspace(min(EF_list), max(EF_list), num_for_long_lists)
+
+harmonic_C_calc_list = []
+harmonic_C_calc_longlist = []
+
+for t, ef in zip(temps_list, EF_list):
+	C_calc = calc_contact(t, ef, 377)
+	harmonic_C_calc_list.append(C_calc[0])
+
+#actually i dont think this makes sense 
+# for t, ef in zip(temps_longlist, EF_longlist):
+# 	C_calc = calc_contact(t, ef, 377)
+# 	harmonic_C_calc_longlist.append(C_calc[0])
+
+popt_calc_C_harmonic, pcovt_calc_C_harmonic = curve_fit(Linear, B_list, harmonic_C_calc_list, 
+					#    sigma=results_df['e_C']
+					   )
+perrt_calc_C_harmonic = np.sqrt(np.diag(pcovt_calc_C_harmonic))
+
+ContactInterpolation_list = []
+ContactInterpolation_longlist = []
+
+for t in temps_list:
+    contactinterp = ContactInterpolation(t)
+    ContactInterpolation_list.append(contactinterp)
+
+# for t in temps_longlist:
+#     contactinterp = ContactInterpolation(t)
+#     ContactInterpolation_longlist.append(contactinterp)
+
+popt_calc_C, pcovt_calc_C = curve_fit(Linear, B_list, ContactInterpolation_list, 
+					#    sigma=results_df['e_C']
+					   )
+perrt_calc_C = np.sqrt(np.diag(pcovt_calc_C))
+
 Bs = np.linspace(results_df['Bfield'].min(), results_df['Bfield'].max(), 100)
 ax.plot(Bs, Linear(Bs, *popt), '--', color='tab:blue')
-ax.errorbar(results_df['Bfield'], results_df['C'], results_df['e_C'], **styles[0])
+ax.errorbar(results_df['Bfield'], results_df['C'], results_df['e_C'], **styles[0], label = r'Measured')
+
+ax.plot(B_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
+# ax.plot(Bxs,ContactInterpolation_longlist, marker='', ls = '--')
+ax.plot(Bxs,Linear(Bxs,*popt_calc_C), marker='', ls = '--', color='hotpink')
+
+ax.plot(B_list, harmonic_C_calc_list, color='salmon', markeredgecolor='maroon', label = r'Harmonic')
+# ax.plot(Bxs, harmonic_C_calc_longlist, marker='', ls = '--', color='tomato')
+ax.plot(Bxs,Linear(Bxs,*popt_calc_C_harmonic), marker='', ls = '--', color='tomato')
+
+ax.plot()
+
+ax.legend()
 
 fig.suptitle("Linear fit to DC contact vs Bfield")
 fig.tight_layout()
