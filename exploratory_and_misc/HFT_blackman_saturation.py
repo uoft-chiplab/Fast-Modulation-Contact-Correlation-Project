@@ -53,10 +53,9 @@ EF = 9459  #Hz  # 2025-11-05_Q
 ToTF = 0.2819
 
 ToTF_11_05_Q_dict = {
-    '202.24': {'ToTF': 0.253, 'EF': 9901},   
+		'202.04': {'ToTF': 0.303, 'EF': 9770},
     '202.14': {'ToTF': 0.267, 'EF': 9876},
-	'202.04': {'ToTF': 0.303, 'EF': 9770},
-
+    '202.24': {'ToTF': 0.253, 'EF': 9901}
 }
 
 barnu = 377 # THIS IS JUST AN ESTIMATE; NOT VALID FOR LOOSE ODTs
@@ -151,12 +150,17 @@ fig.tight_layout()
 fig2.suptitle('Fit params')
 fig2.tight_layout()
 
-
 popt, pcov = curve_fit(Linear, results_df['Bfield'], results_df['C'], sigma=results_df['e_C'])
 perr = np.sqrt(np.diag(pcov))
 
-fig, ax = plt.subplots(figsize=(4, 4))
+fig, axes = plt.subplots(1,2,figsize=(7, 4), sharey = True)
+ax = axes[0]
+ax1 = axes[1]
 ax.set(xlabel='B field [G]', ylabel=r'Contact, $\tilde C$')
+ax1.set(
+	xlabel = 'ToTF'
+)
+
 
 ###Contacts from Tilman 
 num_for_long_lists = 100
@@ -175,7 +179,7 @@ for t, ef in zip(temps_list, EF_list):
 popt_calc_C_harmonic, pcovt_calc_C_harmonic = curve_fit(Linear, B_list, harmonic_C_calc_list, 
 					#    sigma=results_df['e_C']
 					   )
-perrt_calc_C_harmonic = np.sqrt(np.diag(pcovt_calc_C_harmonic))
+perr_calc_C_harmonic = np.sqrt(np.diag(pcovt_calc_C_harmonic))
 
 ContactInterpolation_list = []
 
@@ -183,24 +187,42 @@ for t in temps_list:
     contactinterp = ContactInterpolation(t)
     ContactInterpolation_list.append(contactinterp)
 
+# ax2 = ax.twiny(temps_list)
+# ax2.set_xlabel('Secondary x-axis label')
+
 popt_calc_C, pcovt_calc_C = curve_fit(Linear, B_list, ContactInterpolation_list, 
 					#    sigma=results_df['e_C']
 					   )
-perrt_calc_C = np.sqrt(np.diag(pcovt_calc_C))
+perr_calc_C = np.sqrt(np.diag(pcovt_calc_C))
 
+###plotting measured C
 Bs = np.linspace(results_df['Bfield'].min(), results_df['Bfield'].max(), 100)
 ax.plot(Bs, Linear(Bs, *popt), '--', color='tab:blue')
 ax.errorbar(results_df['Bfield'], results_df['C'], results_df['e_C'], **styles[0], label = r'Measured')
 
+###plotting C from Tilman's code 
 ax.plot(B_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
 ax.plot(Bxs,Linear(Bxs,*popt_calc_C), marker='', ls = '--', color='hotpink')
 
+###plotting calculated C with the harmonic approx applied
 ax.plot(B_list, harmonic_C_calc_list, color='salmon', markeredgecolor='maroon', label = r'Harmonic')
 ax.plot(Bxs,Linear(Bxs,*popt_calc_C_harmonic), marker='', ls = '--', color='tomato')
 
-ax.plot()
+###plotting scaled measured C
+scaled_C = []
 
-ax.legend()
+for m, g in zip(results_df['C'],harmonic_C_calc_list):
+	scaled_C_vals = m * harmonic_C_calc_list[1]/g
+	scaled_C.append(scaled_C_vals)
+scaled_C.reverse()
+ax.plot(B_list, scaled_C, color='sandybrown', markeredgecolor = 'peru', label = 'Scaled')
+
+ax1.plot(temps_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
+ax1.plot(temps_list, harmonic_C_calc_list, color='salmon', markeredgecolor='maroon', label = r'Harmonic')
+ax1.plot(temps_list, results_df['C'],**styles[0], label = r'Measured')
+ax1.plot(temps_list, scaled_C, color='sandybrown', markeredgecolor = 'peru', label = 'Scaled')
+
+ax1.legend(loc = 'lower right')
 
 fig.suptitle("Linear fit to DC contact vs Bfield")
 fig.tight_layout()
