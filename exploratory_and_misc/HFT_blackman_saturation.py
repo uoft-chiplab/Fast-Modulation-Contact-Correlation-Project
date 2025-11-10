@@ -2,12 +2,11 @@
 2025 Nov 4
 Chip Lab
 
-First pass at fitting saturation curves to HFT-short-blackman data around unitarity.
+First pass at fitting saturation curves to HFT-short-blackman data around unitarity. 
+Also calculates DC contact susceptibility.
 """
-
 import os
 import sys
-
 
 # paths
 root_project = os.path.dirname(os.getcwd())
@@ -21,6 +20,10 @@ from library import paper_settings, styles, colors
 from contact_correlations.contact_tabulated import ContactInterpolation
 from contact_correlations.UFG_analysis import BulkViscTrap, calc_contact
 from scipy.optimize import curve_fit
+
+# Controls
+EXPORT =False
+
 ### fit functions
 def Saturation(x, A, x0):
 	return A*(1-np.exp(-x/x0))
@@ -52,13 +55,14 @@ EF = 9459  #Hz  # 2025-11-05_Q
 # EF = 10090  # 2025-11-04_F
 ToTF = 0.2819
 
-ToTF_11_05_Q_dict = {
-		'202.04': {'ToTF': 0.303, 'EF': 9770},
-    '202.14': {'ToTF': 0.267, 'EF': 9876},
-    '202.24': {'ToTF': 0.253, 'EF': 9901}
-}
+Params_11_05_Q = pd.DataFrame({
+	'Field':[202.04, 202.14, 202.24],
+	'ToTF':[0.303, 0.267, 0.253],
+	'EF':[9770, 9876, 9901],
+	'Num':[11280, 11280, 11280] # dummy values
+})
 
-barnu = 377 # THIS IS JUST AN ESTIMATE; NOT VALID FOR LOOSE ODTs
+barnu = 300 # guesstimated from my literal memory of recent trap freqs at 0.2/4
 
 detuning = 150e3  # Hz
 Num = 11280  # 2025-11-05_Q
@@ -90,26 +94,26 @@ for (fpath, style, color) in zip(datfiles, styles, colors):
 	run.data.rename(columns={'Freq':'freq'}, inplace=True)
 	
 	# fill in some extra data or else code will complain
-	run.data['EF'] = EF
+	Bfield = run.data['Field'].values[0]
+
+	# these runs are relevant as the most recent DC sus measurements.
+	try:
+		EF = Params_11_05_Q[Params_11_05_Q['Field'] == Bfield]['EF'].values[0]
+		run.data['EF'] = EF
+		ToTF = Params_11_05_Q[Params_11_05_Q['Field'] == Bfield]['ToTF'].values[0]	
+		run.data['ToTF'] = ToTF
+	except:
+		run.data['EF'] = EF
+		run.data['ToTF'] = ToTF
 	run.data['trf'] = trf
 	run.data['detuning'] = detuning
 
-	Bfield = run.data['Field'].values[0]
 	# complete analysis of data
 	run.analysis(bgVVA=0, pulse_type="blackman")
 	
 	# group and average
-	# cutoff = 0.005
-	# df = run.data[run.data['OmegaR2'] > 1]
-	# alpha_cut = 0.005
-	# omega_cut = 0.05e11
-	# there were very low outliers in alpha when omegaR was large; filter
-	# run.data = run.data[~((run.data['alpha_HFT'] < alpha_cut) & (run.data['OmegaR2'] > omega_cut))]	# omegar2_cutoff = 0.05e11
-	# run.data = run.data[run.data['OmegaR2'] > omegar2_cutoff]
-	# run.data = run.data[((run.data['OmegaR2'] > 0.2e11))]
 	run.group_by_mean('OmegaR2')
 	df = run.avg_data
-	# sigmawindow = df['em_alpha_HFT']*3
 	
 	# fit data to saturation model
 	x = df['OmegaR2']
@@ -138,7 +142,7 @@ for (fpath, style, color) in zip(datfiles, styles, colors):
 	axs[1].errorbar(Bfield, popt[1], perr[1], **style)
 	axs[2].errorbar(Bfield, slope, e_slope, **style)
 
-	results_dict = {'Bfield': Bfield, 'EF': EF, 'trf': trf, 'detuning': run.data['freq'],
+	results_dict = {'Bfield': Bfield, 'EF': EF, 'ToTF':ToTF, 'trf': trf, 'detuning': run.data['freq'],
 				 	'slope': slope, 'e_slope': e_slope, 'OmegaR2_sat': popt[1], 'e_OmegaR2_sat': perr[1],
 					'alpha_max': popt[0], 'e_alpha_max': perr[0], 'C': C, 'e_C': e_C}
 	new_row_df = pd.DataFrame([results_dict])
@@ -163,64 +167,72 @@ ax1.set(
 
 
 ###Contacts from Tilman 
-num_for_long_lists = 100
-B_list = list(map(float, ToTF_11_05_Q_dict.keys()))
-Bxs = np.linspace(min(B_list), max(B_list), num_for_long_lists)
-temps_list = ToTF_list = [value['ToTF'] for value in ToTF_11_05_Q_dict.values()]
-EF_list = [value['EF'] for value in ToTF_11_05_Q_dict.values()]
+# dummy plot to visualize curve
+ef = results_df[results_df['Bfield'] == 202.14]['EF'].values[0]
+ttfs = np.linspace(0.2, 0.8, 20)
+figC, axC = plt.subplots(figsize=(3,2))
+Cs = [calc_contact(ttf, ef, barnu)[0] for ttf in ttfs]
+axC.plot(ttfs, Cs, marker='', ls='--', color='salmon')
+axC.vlines(results_df['ToTF'], ymin=np.min(np.array(Cs)), ymax=np.max(np.array(Cs)), ls=':', lw=1)
+axC.set(xlabel=r'$T/T_F$', ylabel='Contact, ' + r'$\widetilde{C}$', title=fr'$\bar{{EF}}$ = {ef} Hz')
+figC.tight_layout()
 
-harmonic_C_calc_list = []
+# calculate harmonic C from ToTF. However, have to use mean EF to allow dataset comparison, so for validity we
+# want datasets ideally with the same EF.
+meanEF = results_df['EF'].mean()
+harmonic_C_calc_list = [calc_contact(ttf, meanEF, barnu)[0] for ttf in results_df['ToTF']]
+results_df['C_harmonic'] = harmonic_C_calc_list
 
-
-for t, ef in zip(temps_list, EF_list):
-	C_calc = calc_contact(t, ef, 377)
-	harmonic_C_calc_list.append(C_calc[0])
-
-popt_calc_C_harmonic, pcovt_calc_C_harmonic = curve_fit(Linear, B_list, harmonic_C_calc_list, 
+popt_calc_C_harmonic, pcovt_calc_C_harmonic = curve_fit(Linear, results_df['Bfield'], results_df['C_harmonic'], 
 					#    sigma=results_df['e_C']
 					   )
 perr_calc_C_harmonic = np.sqrt(np.diag(pcovt_calc_C_harmonic))
 
+# contact density (valid for uniform gas)
 ContactInterpolation_list = []
-
-for t in temps_list:
+for t in results_df['ToTF']:
     contactinterp = ContactInterpolation(t)
     ContactInterpolation_list.append(contactinterp)
+results_df['C_uniform'] = ContactInterpolation_list
 
-# ax2 = ax.twiny(temps_list)
-# ax2.set_xlabel('Secondary x-axis label')
-
-popt_calc_C, pcovt_calc_C = curve_fit(Linear, B_list, ContactInterpolation_list, 
+popt_calc_C, pcovt_calc_C = curve_fit(Linear, results_df['Bfield'], ContactInterpolation_list, 
 					#    sigma=results_df['e_C']
 					   )
 perr_calc_C = np.sqrt(np.diag(pcovt_calc_C))
 
-###plotting measured C
+# fudge C based on ToTF change between points, referenced to unitary measurement
+# assumes C(TTF) scaling doesn't change much with B field around unitarity.
+# fudge C = \gamma * Experiment C where \gamma = Theory C(TTF(202.14)) / Theory C(TTF(B))
+refC = results_df[results_df['Bfield']==202.14]['C_harmonic']
+results_df['C_corrfactor'] =  refC / results_df['C_harmonic']
+results_df['fudgedC'] = results_df['C_corrfactor'] * results_df['C']
+results_df['e_fudgedC'] = results_df['C_corrfactor'] * results_df['e_C'] 
+
+# fit to new fudged values
+popt_fudge, pcov_fudge = curve_fit(Linear, results_df['Bfield'], results_df['fudgedC'], sigma = results_df['e_fudgedC'])
+perr_fudge = np.sqrt(np.diag(pcov_fudge))
+
+###plotting measured C and fudged C
 Bs = np.linspace(results_df['Bfield'].min(), results_df['Bfield'].max(), 100)
 ax.plot(Bs, Linear(Bs, *popt), '--', color='tab:blue')
 ax.errorbar(results_df['Bfield'], results_df['C'], results_df['e_C'], **styles[0], label = r'Measured')
+ax.plot(Bs, Linear(Bs, *popt_fudge), '--', color='sandybrown')
+ax.errorbar(results_df['Bfield'], results_df['fudgedC'], results_df['e_fudgedC'], color='sandybrown', markeredgecolor = 'peru', label = 'Scaled')
+
 
 ###plotting C from Tilman's code 
-ax.plot(B_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
-ax.plot(Bxs,Linear(Bxs,*popt_calc_C), marker='', ls = '--', color='hotpink')
+# ax.plot(B_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
+# ax.plot(Bxs,Linear(Bxs,*popt_calc_C), marker='', ls = '--', color='hotpink')
 
 ###plotting calculated C with the harmonic approx applied
-ax.plot(B_list, harmonic_C_calc_list, color='salmon', markeredgecolor='maroon', label = r'Harmonic')
-ax.plot(Bxs,Linear(Bxs,*popt_calc_C_harmonic), marker='', ls = '--', color='tomato')
+ax.plot(results_df['Bfield'], results_df['C_harmonic'], color='salmon', markeredgecolor='maroon', label = r'Harmonic')
+ax.plot(Bs,Linear(Bs,*popt_calc_C_harmonic), marker='', ls = '--', color='tomato')
 
-###plotting scaled measured C
-scaled_C = []
-
-for m, g in zip(results_df['C'],harmonic_C_calc_list):
-	scaled_C_vals = m * harmonic_C_calc_list[1]/g
-	scaled_C.append(scaled_C_vals)
-scaled_C.reverse()
-ax.plot(B_list, scaled_C, color='sandybrown', markeredgecolor = 'peru', label = 'Scaled')
-
-ax1.plot(temps_list, ContactInterpolation_list, color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
-ax1.plot(temps_list, harmonic_C_calc_list, color='salmon', markeredgecolor='maroon', label = r'Harmonic')
-ax1.plot(temps_list, results_df['C'],**styles[0], label = r'Measured')
-ax1.plot(temps_list, scaled_C, color='sandybrown', markeredgecolor = 'peru', label = 'Scaled')
+# ###plotting everything against ToTF
+ax1.plot(results_df['ToTF'], results_df['C_uniform'], color='violet', markeredgecolor='purple', label = r'Tilman Predicted Unitary')
+ax1.plot(results_df['ToTF'], results_df['C_harmonic'], color='salmon', markeredgecolor='maroon', label = r'Harmonic')
+ax1.plot(results_df['ToTF'], results_df['C'],**styles[0], label = r'Measured')
+ax1.plot(results_df['ToTF'], results_df['fudgedC'], color='sandybrown', markeredgecolor = 'peru', label = 'Scaled')
 
 ax1.legend(loc = 'lower right')
 
@@ -228,4 +240,27 @@ fig.suptitle("Linear fit to DC contact vs Bfield")
 fig.tight_layout()
 plt.show()
 
+# plot of C fudge factor vs. ToTF and B
+fig, axs = plt.subplots(2)
+axs[0].plot(results_df['ToTF'], results_df['C_corrfactor'], color='mediumorchid', mec='darkorchid', ls='-')
+axs[0].set(xlabel=r'$T/T_F$', ylabel='Contact fudge factor')
+axs[1].plot(results_df['Bfield'], results_df['C_corrfactor'], color='mediumorchid', mec='darkorchid', ls='-')
+axs[1].set(xlabel=r'$B$', ylabel='Contact fudge factor')
+fig.tight_layout()
+plt.show()
+
+
+
 print(r"The contact slope is $d\tilde C/dB = $" + f"{popt[0]:.2f}({1e2*perr[0]:.0f}) [1/G]")
+print(r"After fudging, the contact slope is $d\tilde C/dB = $" + f"{popt_fudge[0]:.2f}({1e2*perr_fudge[0]:.0f}) [1/G]")
+
+if EXPORT:
+
+	csv_path = os.path.join(os.path.join(root_analysis, 'corrections'), f'saturation_HFT.csv')
+	write_header = not os.path.exists(csv_path)
+
+	try:
+		results_df.to_csv(csv_path, mode='a', header=write_header, index=False, sep=',')
+		print(f"✅ Created csv at {csv_path}")
+	except:
+		print(f"Something went wrong when trying to write {csv_path}")

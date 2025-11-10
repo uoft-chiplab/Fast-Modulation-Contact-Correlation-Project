@@ -6,7 +6,7 @@ Intended to be temporary until the original script can be modified to handle bot
 # settings for directories, standard packages...
 from preamble import *
 from get_metadata import metadata
-
+from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
@@ -32,7 +32,7 @@ wiggle_freq = meta_df['freq'].values[0] # kHz
 VVA = meta_df['VVA'].values[0] # assumes just the max VVA for everything
 ### TODO: incorporate into metadata
 EF = meta_df['EF'].values[0]/h # Hz
-
+ToTF = meta_df['ToTF'].values[0] 
 xlabel = 'Times [ms]'
 # Load CCC data for f0 to B conversion
 CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', 'f0'], delimiter='\s')
@@ -57,8 +57,18 @@ single_shot = False
 track_bg = False
 rerun = False
 
+#CORRECTIONS
+CORR_PULSECONV = True
+CORR_SAT =True
+CORR_CFUDGE = True
+
 def line(x, m, b):
 	return m*x+b
+
+# I want to move this somewhere else. Maybe put it in preamble?
+def saturation_scale(x, x0):
+	""" x is OmegaR^2 and x0 is fit 1/e Omega_R^2 """
+	return x/x0*1/(1-np.exp(-x/x0))
 
 def f0_to_B_CCC(x):
 	"""
@@ -273,6 +283,40 @@ for fpath in datfiles:
 
 	if HFT_or_dimer == "HFT":
 		data.analysis(pulse_type="blackman")
+		if CORR_PULSECONV:
+			corr_pulseconv = 1/1.12 # TODO: EXTRACT FROM ACTUAL SIMULATION DATA
+			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_pulseconv
+			data.data['CORR_PULSECONV'] = True # flag for ease of checking
+			print(f'Applied pulse convolution correction of {corr_pulseconv:.2f}')
+		if CORR_SAT:
+			sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
+			# We saw saturation was field-specific. This is a rough estimate to apply to all Bfields. TODO: Redo with better data.
+			mean_sat_scale = sat_scale_df['OmegaR2_sat'].mean()
+			e_mean_sat_scale = np.sqrt((sat_scale_df['e_OmegaR2_sat']**2).sum())/3 #unused
+			# TODO: distribution is not normal; use MonteCarlo methods (see HFT_dimer_bg_analysis for example)
+			data.data['corr_sat'] = saturation_scale(data.data['OmegaR2'], mean_sat_scale)
+			data.data.loc[:, ['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] = \
+				(data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']].multiply(\
+					data.data['corr_sat'], axis=0)) # the explicitness here avoids in-place broadcasting errors
+			data.data['CORR_SAT'] = True # flag for checking
+
+			print(f'Applied saturation correction of approximately = {data.data.corr_sat.mean():.2f}')
+		if CORR_CFUDGE:
+			# this fudge currently uses the B-field as the input parameter, but this is not general. It should really be a fudge for TTF.
+			# It just so happens that the calibration set and our measurements are at similar TTFs.
+			# TODO make general by fudging for TTF
+			cfudge_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
+			field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
+			def FixedSinkHz(t, A, p, C):
+				omega = wiggle_freq * 2 * np.pi # kHz
+				return A*np.sin(omega * t - p) + C
+			thisB = FixedSinkHz(middle_pulse_time, *field_params)
+			corr_interp = interp1d(cfudge_df['Bfield'], cfudge_df['C_corrfactor'], fill_value="extrapolate")
+			corr_cfudge = corr_interp(thisB)
+			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_cfudge
+			data.data['CORR_CFUDGE'] = True
+			print(f'Applied C(TTF) fudge correction of {corr_cfudge:.2f} at B={thisB:.2f}G')
+
 		data.group_by_mean('freq')
 		df_list.append(data.avg_data)
 		
