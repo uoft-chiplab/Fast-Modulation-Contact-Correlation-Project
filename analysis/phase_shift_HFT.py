@@ -48,7 +48,7 @@ print(f'Field cal run being used is {field_cal_run}')
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export = False
+Export = True
 amp_cutoff = 0.0 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
@@ -684,14 +684,14 @@ fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} V
 
 # fig.tight_layout()
 	
-if Export == True and fix_width == True: # this complains when fix_width is false,  because there are mismatched num of params now
+if Export == True:
 	csv_path = os.path.join(analysis_folder, f'phase_shift_2025_summary.csv')
 	write_header = not os.path.exists(csv_path)
 	run_id = run
 
 	if os.path.exists(csv_path):
 		existing_df = pd.read_csv(csv_path, index_col=0)
-		already_logged = run_id in existing_df["middle_pulse_time"]
+		already_logged = run_id in existing_df.index
 	else:
 		already_logged = False
 	
