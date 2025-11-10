@@ -46,5 +46,5 @@ if module_folder not in sys.path:
 	sys.path.append(module_folder)	
 from data_class import Data
 from library import fit_label, a0, pi, hbar, GammaTilde, h, mK, B_from_FreqMHz
-from fit_functions import Sinc2
+from fit_functions import Sinc2, FixedSin
 from rfcalibrations.Vpp_from_VVAfreq import Vpp_from_VVAfreq

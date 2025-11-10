@@ -56,19 +56,28 @@ class metadata:
         # get other metadata from run name
         wiggle_freq = float(r_name[:r_name.find("khz")].split("_")[-1])
 
+        # pulse time
         i = r_name.find("us")
         try:
             pulse_time = float(r_name[i-2:i]) # in us
         except:
             pulse_time = 20 # default to 20 us if not found
 
+        # VPP
         i = r_name.find("vpp")
         try:
             Vpp = float(r_name[i-3:i]) # in V
         except:
             Vpp = 1.8 # default to 1.8 V if not found
 
-        self.df.loc[j, ["freq", "pulse_time", "Vpp", "VVA"]] = [wiggle_freq, pulse_time, Vpp, VVA]
+        is_HFT = ("hft" in r_name)
+
+        self.df.loc[j, ["freq", "pulse_time", "Vpp", "VVA", "is_HFT"]] = [wiggle_freq, pulse_time, Vpp, VVA, is_HFT]
+
+        if is_HFT:
+            self.df.loc[j, "pulse_type"] = "blackman" if ("blackman" in r_name) else "square"
+        else:
+            self.df.loc[j, "pulse_type"] = "N/A"
 
     def get_field_cal(self, i):
         """
@@ -107,12 +116,12 @@ class metadata:
         u_path = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{u_run}/*.dat")[0]
         # print(u_path)
         u_df = pd.read_csv(u_path)
-        # print(u_df)
-
+        
         self.df.loc[j, ["ToTF", "EF", "N"]] = np.mean(u_df[["ToTF", "EF", "N"]], axis=0)
-        self.df.loc[j, ["eToTF", "eEF", "eN"]] = np.std(u_df[["ToTF", "EF", "N"]], axis=0)/len(u_df)
+        self.df.loc[j, ["eToTF", "eEF", "eN"]] = np.std(u_df[["ToTF", "EF", "N"]].values, axis=0)/len(u_df)
 
         self.df.loc[j, ["wx", "wy", "wz"]] = np.mean(u_df[["wx", "wy", "wz"]], axis=0)
+
     def output(self):
         if self.overwrite:
             if os.path.exists(self.fpath):
@@ -125,6 +134,12 @@ class metadata:
                     else:
                         # if run not found, append it
                         old_df = pd.concat([old_df, self.df[self.df['run'] == r]])
+
+                # check if there are new columns:
+                for i, col in enumerate(self.df.columns):
+                    if col not in old_df.columns:
+                        for r in self.df.run.values:
+                            old_df.loc[old_df.run == r, col] = self.df[self.df['run'] == r][col].values
 
                 old_df.to_csv(self.fpath, index=False)
 
@@ -148,7 +163,8 @@ if __name__ == "__main__":
             "2025-10-17_M",
             "2025-10-21_H", 
             "2025-10-23_R",
-            "2025-10-23_S"]
+            "2025-10-23_S",
+            "2025-11-06_H"]
     #"2025-09-24_E" is 6kHz 20us pulse 1.8Vpp
     #2025-10-01_L is 10kHz 20us pulse 1.8Vpp
 
@@ -156,6 +172,7 @@ if __name__ == "__main__":
     drop_list = [
           [0.43],
           [0.29], 
+          [],
           [],
           [],
           [],
@@ -170,9 +187,11 @@ if __name__ == "__main__":
         "single shot",
         "decent",
         "bad",
-        "?"
+        "?",
+        ""
     ]
-    # 2025-09-24_E is 6kHz 20us pulse 1.8Vpp
+ 
+# 2025-09-24_E is 6kHz 20us pulse 1.8Vpp
 # 2025-10-01_L is 10kHz 20us pulse 1.8Vpp
 # 2025-10-17_E is ???
 # 2025-10-17_M is 10kHz 20us pulse 1.8Vpp single shot measurements
