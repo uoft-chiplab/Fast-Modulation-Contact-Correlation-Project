@@ -36,6 +36,7 @@ import pickle
 import pandas as pd
 import ast
 from scipy.interpolate import interp1d
+from scipy.optimize import curve_fit
 
 #2025 data comes from phase_shift.py
 data = pd.read_csv(ps_folder + '\\phase_shift_2025_summary.csv')
@@ -74,12 +75,18 @@ def darken(rgba, factor=0.5):
 	r, g, b, a = rgba
 	return (r * factor, g * factor, b * factor, a)
 
-def get_marker(value):
-	"""Map a numeric value to a marker. Hardcoded to map mod freqs (kHz)."""
+def get_marker(value, HFT_or_dimer):
+	"""Map a numeric value to a marker. Hardcoded to map mod freqs (kHz) and also pulse type (HFT_or_dimer)."""
 	# markers = ['s', 'o', '^', 'x', 'D', '*']  # circle, square, triangle, etc.
-	marker_map = {
-		6.0: 's',
-		10.0: 'o',
+	if HFT_or_dimer == 'dimer':
+		marker_map = {
+			6.0: 's',
+			10.0: 'o',
+			}
+	elif HFT_or_dimer == 'HFT':
+		marker_map = {
+			6.0: 'h',
+			10.0: 'P',
 		}
 	return marker_map.get(value, 'x') # default to 'x' if not found
 
@@ -89,6 +96,9 @@ def contact_time_delay(phi, period):
 		phi /  (omega) = phi/(2*pi) * period
 	"""
 	return phi/(2*np.pi) * period
+
+def Linear(x, m, b):
+	return m*x + b
 
 # load pickle
 if load == True:
@@ -156,7 +166,7 @@ y_data_C = data['Phase Shift C-B (rad)']
 y_data_C_err = data['Phase Shift C-B err (rad)']
 colors_data = get_color(data['T'])
 colors_data = [tuple(sublist) for sublist in colors_data] 
-markers_data = [get_marker(x) for x in (data['Modulation Freq (kHz)'])]
+markers_data = [get_marker(x, HFT_or_dimer) for x, HFT_or_dimer in zip(data['Modulation Freq (kHz)'], data['HFT_or_dimer'])]
 
 # in order to apply individual colors and markers, must loop 
 for x, yC, eyC,color, marker in zip(x_data, y_data_C, y_data_C_err, colors_data, markers_data):	
@@ -284,21 +294,39 @@ for b, BVT in enumerate(BVTs):
 		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
 		  )
 
+# comparing AC to DC contact. This code is very ugly because of different data processing over time.
 # get DC dimer amplitudes (currently only valid for ToTF=0.3)
 DCdf = pd.read_csv(os.path.join(root_folder, 'exploratory_and_misc/DC_contact.csv'))
+DCdf['HFT_or_dimer'] = 'dimer'
 DCdf['alpha'] = DCdf['popts'].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
 DCdf = DCdf[DCdf['ToTF'] < 0.3]
 DCdf.sort_values(by='Bfield')
 alphas = np.array(DCdf['alpha'].apply(lambda x: x[0]).tolist())
-field_to_contact = interp1d(DCdf['Bfield'], DCdf['contact'], kind='linear', fill_value='extrapolate')
-field_to_alpha = interp1d(DCdf['Bfield'], alphas, kind='linear', fill_value='extrapolate')
-Bs = np.linspace(DCdf['Bfield'].min(), DCdf['Bfield'].max(), 10)
-Cs = field_to_contact(Bs)
-As = field_to_alpha(Bs)
+field_to_contact_dimer = interp1d(DCdf['Bfield'], DCdf['contact'], kind='linear', fill_value='extrapolate')
+field_to_alpha_dimer = interp1d(DCdf['Bfield'], alphas, kind='linear', fill_value='extrapolate')
+Bs_d = np.linspace(DCdf['Bfield'].min(), DCdf['Bfield'].max(), 10)
+Cs_d = field_to_contact_dimer(Bs_d)
+As_d = field_to_alpha_dimer(Bs_d)
+
+# DC HFT contact susceptibility from early November runs (ToTF <~ 0.3)
+sus_df = pd.read_csv(os.path.join(root_folder, 'corrections//saturation_HFT.csv'))
+sus_df['HFT_or_dimer']='HFT'
+popt, pcov = curve_fit(Linear, sus_df['Bfield'], sus_df['C'], sigma=sus_df['e_C'])
+popt_fudged, pcov_fudged = curve_fit(Linear, sus_df['Bfield'], sus_df['fudgedC'], sigma=sus_df['e_fudgedC'])
+field_to_contact_HFT_unfudged = lambda B :Linear(B, *popt)
+field_to_contact_HFT = lambda B: Linear(B, *popt_fudged)
+Bs_HFT = np.linspace(sus_df['Bfield'].min(), sus_df['Bfield'].max(), 10)
+Cs_HFT = field_to_contact_HFT(Bs_HFT)
+Cs_HFT_unfudged = field_to_contact_HFT_unfudged(Bs_HFT)
+
 fig2, ax = plt.subplots()
-ax.plot(DCdf['Bfield'], DCdf['contact'], marker='o', ls='')
-ax.plot(Bs, Cs, ls='--', marker='')
-ax.set(xlabel='Bfield [G]', ylabel=r'$C/Nk_F$', title=r'$T/T_F \approx 0.3$')
+ax.plot(DCdf['Bfield'], DCdf['contact'], marker='o', ls='', color='orchid', label='DC dimer')
+ax.plot(Bs_d, Cs_d, ls='--', marker='', color='orchid', label='dimer fit')
+ax.errorbar(sus_df['Bfield'], sus_df['fudgedC'], sus_df['e_fudgedC'], marker='P', ls='', color='salmon', label='DC HFT')
+ax.plot(Bs_HFT, Cs_HFT, ls= '--', marker='', color='salmon', label='HFT fudged')
+ax.plot(Bs_HFT, Cs_HFT_unfudged, ls= '--', marker='', color='orange', label='HFT unfudged')
+ax.set(xlabel = 'Bfield [G]', ylabel = r'$\widetilde{C}$', title = r'DC C, $T/T_F \lesssim 0.3$')
+ax.legend()
 
 # need field cal amplitudes for each run
 # load wiggle field calibration
@@ -307,15 +335,29 @@ field_cal_df = pd.read_csv(field_cal_df_path)
 field_cal_df['field_cal_run'] = field_cal_df['run']
 field_cal_df = field_cal_df[['field_cal_run','B_amp']]
 data=pd.merge(data, field_cal_df, on='field_cal_run')
-data['contact_DC_amp'] = np.abs(field_to_contact(202.14-data['B_amp']) - field_to_contact(202.14+data['B_amp'])) /2 # divide by 2 to compare to sine fit amp
-data['alpha_DC_amp'] = np.abs(field_to_alpha(202.14-data['B_amp']) - field_to_alpha(202.14+data['B_amp'])) /2
+
 # from field_cal_run, find field amplitude for each run, then evaluate DC contact and alpha amplitude
 # for 202.14 +/- Bamp. Calculate difference. Call it DC amp.
+# data['HFT_or_dimer'] = "HFT" # test
+data['contact_DC_amp'] = np.where(
+    data['HFT_or_dimer'] == 'dimer',
+    np.abs(field_to_contact_dimer(202.14 - data['B_amp']) - field_to_contact_dimer(202.14 + data['B_amp'])) / 2,
+    np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2
+)
+data['alpha_DC_amp'] = np.where(
+    data['HFT_or_dimer'] == 'dimer',
+    np.abs(field_to_alpha_dimer(202.14 - data['B_amp']) - field_to_alpha_dimer(202.14 + data['B_amp'])) / 2,
+	0
+    # np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2
+)
+
+# data['contact_DC_amp'] = np.abs(field_to_contact_dimer(202.14-data['B_amp']) - field_to_contact_dimer(202.14+data['B_amp'])) /2 # divide by 2 to compare to sine fit amp
+# data['alpha_DC_amp'] = np.abs(field_to_alpha_dimer(202.14-data['B_amp']) - field_to_alpha_dimer(202.14+data['B_amp'])) /2
 
 for i, plot_param in enumerate(plot_params):
 	if i==0:
 		DC_amps = data['alpha_DC_amp']
-		DC_amps_err = data['alpha_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY
+		DC_amps_err = data['alpha_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY CORRECTLY
 		data['alpha_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
 		data['alpha_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 		data['alpha_rel_amp'] = data['alpha_AC_amp']/data['alpha_DC_amp']
@@ -326,7 +368,7 @@ for i, plot_param in enumerate(plot_params):
 
 	else:
 		DC_amps = data['contact_DC_amp']
-		DC_amps_err = data['contact_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY
+		DC_amps_err = data['contact_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY CORRECTLY
 		data['contact_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
 		data['contact_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 		data['contact_rel_amp'] = data['contact_AC_amp']/data['contact_DC_amp']
@@ -341,7 +383,8 @@ for i, plot_param in enumerate(plot_params):
 		x,y,yerr= ey,color=color,marker=marker, mec=darken(color)
 		)
 
-fig.suptitle(r'Summary: analyzing amplitude')
+
+fig.suptitle(r'Summary: analyzing amplitude (uncertainties not prop. correctly)')
 fig.tight_layout()
 
 fig, ax=plt.subplots(2,1)

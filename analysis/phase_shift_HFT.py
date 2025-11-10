@@ -48,7 +48,7 @@ print(f'Field cal run being used is {field_cal_run}')
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export = True
+Export = False
 amp_cutoff = 0.0 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
@@ -283,24 +283,40 @@ for fpath in datfiles:
 
 	if HFT_or_dimer == "HFT":
 		data.analysis(pulse_type="blackman")
+		### Apply corrections
 		if CORR_PULSECONV:
 			corr_pulseconv = 1/1.12 # TODO: EXTRACT FROM ACTUAL SIMULATION DATA
+			data.data['corr_pulseconv'] = corr_pulseconv
 			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_pulseconv
-			data.data['CORR_PULSECONV'] = True # flag for ease of checking
 			print(f'Applied pulse convolution correction of {corr_pulseconv:.2f}')
+		else:
+			data.data['corr_pulseconv'] = 1.0
 		if CORR_SAT:
 			sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
-			# We saw saturation was field-specific. This is a rough estimate to apply to all Bfields. TODO: Redo with better data.
-			mean_sat_scale = sat_scale_df['OmegaR2_sat'].mean()
-			e_mean_sat_scale = np.sqrt((sat_scale_df['e_OmegaR2_sat']**2).sum())/3 #unused
+
+			# linear interpolate the saturation parameter across field?
+			field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
+			def FixedSinkHz(t, A, p, C):
+				omega = wiggle_freq * 2 * np.pi # kHz
+				return A*np.sin(omega * t - p) + C
+			thisB = FixedSinkHz(middle_pulse_time, *field_params)
+			corr_interp = interp1d(sat_scale_df['Bfield'], sat_scale_df['OmegaR2_sat'], fill_value="extrapolate")
+			data.data['corr_sat'] = saturation_scale(data.data['OmegaR2'], corr_interp(thisB))
+
+			# # We saw saturation was field-specific. This is a rough estimate to apply to all Bfields. 
+			# # TODO: Redo calibration with better data. (see lab book, ~Nov 7)
+			# mean_sat_scale = sat_scale_df['OmegaR2_sat'].mean()
+			# e_mean_sat_scale = np.sqrt((sat_scale_df['e_OmegaR2_sat']**2).sum())/3 #unused
 			# TODO: distribution is not normal; use MonteCarlo methods (see HFT_dimer_bg_analysis for example)
-			data.data['corr_sat'] = saturation_scale(data.data['OmegaR2'], mean_sat_scale)
+			# data.data['corr_sat'] = saturation_scale(data.data['OmegaR2'], mean_sat_scale)
 			data.data.loc[:, ['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] = \
 				(data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']].multiply(\
 					data.data['corr_sat'], axis=0)) # the explicitness here avoids in-place broadcasting errors
-			data.data['CORR_SAT'] = True # flag for checking
 
 			print(f'Applied saturation correction of approximately = {data.data.corr_sat.mean():.2f}')
+		else:
+			data.data['corr_sat'] = 1.0
+
 		if CORR_CFUDGE:
 			# this fudge currently uses the B-field as the input parameter, but this is not general. It should really be a fudge for TTF.
 			# It just so happens that the calibration set and our measurements are at similar TTFs.
@@ -314,9 +330,10 @@ for fpath in datfiles:
 			corr_interp = interp1d(cfudge_df['Bfield'], cfudge_df['C_corrfactor'], fill_value="extrapolate")
 			corr_cfudge = corr_interp(thisB)
 			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_cfudge
-			data.data['CORR_CFUDGE'] = True
+			data.data['corr_cfudge'] = corr_cfudge
 			print(f'Applied C(TTF) fudge correction of {corr_cfudge:.2f} at B={thisB:.2f}G')
-
+		else:
+			data.data['corr_cfudge'] = 1.0
 		data.group_by_mean('freq')
 		df_list.append(data.avg_data)
 		
@@ -715,7 +732,8 @@ if Export == True:
 			'Error of Sin Fit of f0':[perrsf0],
 			'TRACK_BG':track_bg,
 			'FIX_WIDTH':fix_width,
-			'SINGLE_SHOT':single_shot
+			'SINGLE_SHOT':single_shot,
+			'HFT_or_dimer': HFT_or_dimer
 		}, index=[run_id])  
 
 		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
