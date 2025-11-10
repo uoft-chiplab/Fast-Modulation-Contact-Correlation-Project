@@ -23,11 +23,11 @@ from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-10-23_R"
+run = "2025-11-07_E"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export = False
+Export = True
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
