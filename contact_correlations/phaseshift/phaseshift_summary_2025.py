@@ -85,7 +85,7 @@ def get_marker(value, HFT_or_dimer):
 			}
 	elif HFT_or_dimer == 'HFT':
 		marker_map = {
-			6.0: 'h',
+			6.0: 'd',
 			10.0: 'P',
 		}
 	return marker_map.get(value, 'x') # default to 'x' if not found
@@ -272,6 +272,7 @@ axs[3].set(
 )
 x_data = (data['freq']*1000)/data['T']
 plot_params = ['Sin Fit of A', 'Sin Fit of C']
+seen_markers = set()
 for i, plot_param in enumerate(plot_params):
 	# ensures conversion of strings into actual lists of values
 	data[plot_param] = data[plot_param].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
@@ -280,11 +281,18 @@ for i, plot_param in enumerate(plot_params):
 	y_amps = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
 	yerr = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 	if i != 1:
-		for x, y, ey,color, marker in zip(x_data, y_amps, yerr, colors_data, markers_data):	
+		for x, y, ey,color, marker, mod_freq, pulse_type in zip(x_data, y_amps, yerr, colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):	
+			label = f"{pulse_type} {mod_freq}kHz" if marker not in seen_markers else None
+			if label:
+				seen_markers.add(marker)
+
 			axs[i].errorbar(
-			x,y,yerr= ey,color=color,marker=marker, mec=darken(color)
+			x,y,yerr= ey,color=color,marker=marker, mec=darken(color), 
+			label=label
 			)
+axs[0].legend()
 ax_tau = axs
+
 
 for b, BVT in enumerate(BVTs):
 	axs[2].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.T),

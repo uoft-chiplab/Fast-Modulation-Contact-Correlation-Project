@@ -27,14 +27,14 @@ run = "2025-11-07_E"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export = True
+Export =False
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
 single_shot = True
-track_bg = True
+track_bg = False
 rerun = False
 
 #CORRECTIONS
@@ -185,7 +185,7 @@ def fit_sinc2(xy, width=False):
 
 	return popts, perrs, plabel, sinc2
 
-def fit_fixedSinkHz(t, y, run_freq, eA, p0=None, param_labels=["A", "p", "C"]):
+def fit_fixedSinkHz(t, y, run_freq, eA, p0=None, param_labels=None):
 	"""
 	need docstring, and maybe a better way to code this
 	t in ms, freq in kHz
@@ -207,6 +207,8 @@ def fit_fixedSinkHz(t, y, run_freq, eA, p0=None, param_labels=["A", "p", "C"]):
 		popts, pcov = curve_fit(f, t, y, p0, bounds=([0, 0, 0], [np.inf, 2*np.pi, np.inf]))
 		perrs = np.sqrt(np.diag(pcov))
 
+	if param_labels == None:
+		param_labels=["A", "p", "C"]
 	plabel = fit_label(popts, perrs, param_labels)
 
 	return popts, perrs, plabel, f
@@ -337,7 +339,7 @@ for fpath in datfiles:
 			# TODO make general by fudging for TTF
 			cfudge_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
 			field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
-			thisB = sine(pulse_time, wiggle_freq*2*np.pi, *field_params) # omega in kHz
+			thisB = sine(middle_pulse_time, wiggle_freq*2*np.pi, *field_params) # omega in kHz
 			corr_interp = interp1d(cfudge_df['Bfield'], cfudge_df['C_corrfactor'], fill_value="extrapolate")
 			corr_cfudge = corr_interp(thisB)
 			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_cfudge
@@ -478,86 +480,110 @@ gs = [gridspec.GridSpecFromSubplotSpec(
 			height_ratios=[3, 1], hspace=0.05  
 			) for i, out_gs in enumerate(outer)]
 
-# gs = gridspec.GridSpec(6, 1, height_ratios=[3,1, 3,1, 3,1], hspace=0.06)
+axs = [fig.add_subplot(gs[i][0]) for i in range(3)]
+axrs = [fig.add_subplot(gs[i][1], sharex = ax) for i, ax in enumerate(axs)]
 
-# peak transfer
-ax0 = fig.add_subplot(gs[0][0])
-ax0.errorbar(df.index, df.A, yerr=df.eA)
-ax0.set_ylabel("peak transfer")
-ax0.tick_params(labelbottom=False)
+[ax.tick_params(labelbottom=False) for ax in axs]
+ax0, ax1, ax2 = axs # for easier calling
 
-# f0
-ax1 = fig.add_subplot(gs[1][0])
-ax1.errorbar(df.index, df.x0, yerr=df.ex0 )
-ax1.set_ylabel("f0 [MHz]")
-ax1.tick_params(labelbottom=False)
+def plot_and_fit_sine(df, attr, freq, ax, ax_resid, ylabel, param_labels=None, **kwargs):
+	"""
+	given attr in df, plots residuals fit to f with params popts.
+	"""
+	# get data
+	xs = df.index
+	ys = df[attr]
+	eys = df[f"e{attr}"]
 
-# contact
-ax2 = fig.add_subplot(gs[2][0])
-ax2.errorbar(df.index, df.C,
-				yerr=df.eC )
-ax2.set(ylabel = r'$C/Nk_F$')
-ax2.tick_params(labelbottom=False)
+	# plot data
+	ax.errorbar(xs, ys, yerr = eys, **kwargs)
+	color = kwargs.get("color")
+	if color != None: ax.set_ylabel(ylabel, color=color) 
+	else: ax.set_ylabel(ylabel)
 
-# plot fits to sine
-###Sine fits for the wiggle data pts 
-# sine should be same for both data
-poptsA, perrsA, plabelA, sine_A = fit_fixedSinkHz(df.index, df.A, wiggle_freq, df.eA)
-poptsf0, perrsf0, plabelf0, __ = fit_fixedSinkHz(df.index, df.x0, wiggle_freq, df.ex0)
-poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df.index, df.C, wiggle_freq, df.eC)
+	# fit
+	popts, perrs, plabel, sine_fit = fit_fixedSinkHz(xs, ys, freq, eys, param_labels=param_labels)
 
-###plotting sin fit to 1/A and f0 and C 
+	# plot fit
+	ts = np.linspace(min(xs), max(xs), 100)
+	ax.plot(ts, sine_fit(ts, *popts), ls="-", marker="", 
+				label=plabel, color=kwargs.get("color")
+				)
+	
+	# plot residuals 
+	ys_resid = ys - sine_fit(xs, *popts)
+
+	if color == None:  ax_resid.errorbar(xs, ys_resid, yerr=eys, color="mediumvioletred", **kwargs)
+	else: ax_resid.errorbar(xs, ys_resid, yerr=eys, **kwargs)
+	ax_resid.axhline(0, ls="--", color="lightgrey", marker="")
+
+	# formatting
+	ax.tick_params(labelbottom = False)
+	ax_resid.set_xlabel("time (ms)")
+	ax.legend(loc=0)
+	ax.ticklabel_format(useOffset=False, style='plain')
+
+	return popts, perrs, plabel, sine_fit
+
+def make_plot_title(fig, run, pulse_time, wiggle_freq, dropped_list, 
+					popts_list, perrs_list, B_phase, eB_phase, plabels, y=1.02):
+
+	###Finding the phase shift by subtracting various fits
+	# add pi offset to B field to compare phase shift
+	phases = np.array([popts_list[0]-popts_list[1]  + np.pi,
+			popts_list[1] - (B_phase),
+			popts_list[2] - (B_phase)  + np.pi
+	])
+	ephases = np.sqrt([
+		(perrs_list[0]**2 + perrs_list[1]**2),
+		(perrs_list[1]**2 + eB_phase**2),
+		(perrs_list[2]**2 + eB_phase**2)
+		])
+
+	# convert angles from [-2pi, 2pi] to between [-pi, pi]
+	for i, p in enumerate(phases):
+		# prop error?
+		phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
+
+	try:
+		fits = fit_label(phases, ephases,plabels, 
+							units = ["rad", r"rad", r"rad"], digits=2)
+	except:
+		# errors not available
+		# generalize this later
+		fits = (f"phase shift A-f0 = {phases[0]:.2f}" 
+				f"\nphase shift f0-B = {phases[1]:.3f}" 
+				f"\nphase shift C-B = {phases[2]:.2f}")
+		
+	fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
+				f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=y)
+
+poptsA, perrsA, plabelA, sine_A = plot_and_fit_sine(df, "A", wiggle_freq, ax0, 
+													axrs[0], ylabel="peak transfer")
+
+poptsf0, perrsf0, plabelf0, __ = plot_and_fit_sine(df, "x0", wiggle_freq, ax1, 
+												   axrs[1], ylabel="f0 [MHz]")
+
+poptsC, perrsC, plabelC, sine_C = plot_and_fit_sine(df, "C", wiggle_freq, ax2, 
+													axrs[2], ylabel=r'$C/Nk_F$')
+
 ts = np.linspace(min(df.index), max(df.index), 100)
-ax0.plot(ts, sine_A(ts, *poptsA), ls="-", marker="", 
-			label=plabelA
-			)
-fit1 = ax1.plot(ts, sine_A(ts, *poptsf0), ls="-", marker="", label=plabelf0)
-ax2.plot(ts, sine_C(ts, *poptsC), ls="-", marker="", label=plabelC)
 
 ###plotting the Field wiggle in B (G)
-B_phase = field_cal['B_phase'].values[0] 
-eB_phase = field_cal['e_B_phase'].values[0]
+B_phase, eB_phase = field_cal[['B_phase', 'e_B_phase']].values[0]
 field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
 Bs = sine_A(ts, *field_params)
 
 B_label = fit_label(field_cal[['B_amp', 'B_phase', 'B_offset']].values[0], 
 					field_cal[['e_B_amp', 'e_B_phase', 'e_B_offset']].values[0],
-					["A", "p", "C"])
-ax1_B = ax1.twinx()
-B1 = ax1_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
+					[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"])
 
-ax1_B.set_ylabel("B(cal) [G]")
+B_axs = [ax.twinx() for ax in [ax1, ax2]]
+[ax.invert_yaxis() for ax in B_axs] # flip y axis instead of phase shifting
+B_plots = [ax.plot(ts, Bs, color="cornflowerblue", ls='--', marker="") for ax in B_axs]
+[ax.set_ylabel("B(cal) [G]") for ax in B_axs]
 
-ax2_B = ax2.twinx()
-ax2_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
-ax2_B.set_ylabel("B(cal) [G]")
-
-# flip y axis instead of phase shifting
-ax1_B.invert_yaxis()
-ax2_B.invert_yaxis()
-
-fig.legend(B1, [B_label], loc='upper center', bbox_to_anchor=(1, 0.85), title="field fit")
-
-###plotting residuals
-resid0 = fig.add_subplot(gs[0][1], sharex=ax0)
-resid1 = fig.add_subplot(gs[1][1], sharex=ax1)
-resid2 = fig.add_subplot(gs[2][1], sharex=ax2)
-
-resid0.axhline(0, ls="--", color="lightgrey", marker="")
-resid1.axhline(0, ls="--", color="lightgrey", marker="")
-resid2.axhline(0, ls="--", color="lightgrey", marker="")
-
-resid0.errorbar(df.index, df.A-sine_A(df.index, *poptsA), yerr=df.eA, color='mediumvioletred')
-resid1.errorbar(df.index, df.x0-sine_A(df.index, *poptsf0), yerr=df.ex0, color='mediumvioletred')
-resid2.errorbar(df.index, df.C-sine_A(df.index, *poptsC), df.eC, color='mediumvioletred')
-
-resid0.set_xlabel("time (ms)")
-resid1.set_xlabel("time (ms)")
-resid2.set_xlabel("time (ms)")
-
-ax0.legend(loc=0)
-ax1.legend(loc=0)
-ax2.legend(loc=0)
+fig.legend(B_plots[0], [B_label], loc='upper center', bbox_to_anchor=(1, 0.85), title="field fit")
 
 # reorder axes so legend is not covered by B line
 ax1.set_zorder(2)
@@ -565,36 +591,12 @@ ax1.patch.set_visible(False)
 ax2.set_zorder(2)
 ax2.patch.set_visible(False)
 
-###Finding the phase shift by subtracting various fits
-# add pi offset to B field to compare phase shift
-phases = np.array([poptsA[1] - poptsf0[1],
-		poptsf0[1] - (B_phase + np.pi),
-		poptsC[1] - (B_phase+np.pi)
-])
-ephases = np.sqrt([
-	(perrsA[1]**2 + perrsf0[1]**2),
-	(perrsf0[1]**2 + eB_phase**2),
-	(perrsC[1]**2 + eB_phase**2)
-	])
-
-# convert angles from [-2pi, 2pi] to between [-pi, pi]
-for i, p in enumerate(phases):
-	# prop error?
-	phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
-
-try:
-	fits = fit_label(phases, ephases, [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
-									r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
-									r"$\phi$ for $C$ - $B$ cal."], 
-						units = ["rad", r"rad", r"rad"], digits=2)
-except:
-	# errors not available
-	fits = (f"phase shift A-f0 = {phases[0]:.2f}" 
-			f"\nphase shift f0-B = {phases[1]:.3f}" 
-			f"\nphase shift C-B = {phases[2]:.2f}")
-	
-fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
-			f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=1.02)
+make_plot_title(fig, run, pulse_time, wiggle_freq, 
+				dropped_list, [poptsA[1], poptsf0[1], poptsC[1]], [perrsA[1], perrsf0[1], perrsC[1]], 
+				B_phase, eB_phase,
+				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
+										r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
+										r"$\phi$ for $C$ - $B$ cal."])
 
 ###
 ### Condensed plot with just f0->B and 
@@ -605,101 +607,31 @@ fig = plt.figure(figsize=(8, 4))
 gs = gridspec.GridSpec(
 			2, 1, height_ratios=[3, 1], hspace=0.05)
 
-
 ax = fig.add_subplot(gs[0])
+resid = fig.add_subplot(gs[1], sharex=ax)
 
 # B field on secondary axis
 ax_B = ax.twinx()
-ax_B.errorbar(df.index, df.B, yerr=df.eB, marker='s', 
-			color='cornflowerblue', markerfacecolor='white')
-ax_B.set_ylabel("B [G]", color='cornflowerblue')
-ax_B.tick_params(labelbottom=False)
+ax_B.invert_yaxis() # flip y axis instead of phase shifting
 
-# contact
-ax.errorbar(df.index, df.C, yerr=df.eC, marker='o', 
-			color='mediumvioletred')
-ax.set_ylabel(r'$C/Nk_F$', color='mediumvioletred')
-ax.tick_params(labelbottom=False)
+poptsC, perrsC, plabelC, sine_C = plot_and_fit_sine(df, "C", wiggle_freq, ax, resid, ylabel=r"$C/Nk_F$", 
+				  param_labels=[r"$C_\mathrm{amp}$", r"$\phi$", r"$C_\mathrm{eq}$"], marker='o', 
+				  color='mediumvioletred')
+poptsB, perrsB, plabelB, __ = plot_and_fit_sine(df, "B", wiggle_freq, ax_B, resid, ylabel="B [G]", 
+				  param_labels=[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"], marker='s', 
+ 				  color='cornflowerblue', markerfacecolor='white')
 
-# plot fits to sine
-###Sine fits for the wiggle data pts 
-# sine should be same for both data
-poptsB, perrsB, plabelB, __ = fit_fixedSinkHz(df.index, df.B, wiggle_freq, df.eB, param_labels=[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"])
-poptsC, perrsC, plabelC, sine_C = fit_fixedSinkHz(df.index, df.C, wiggle_freq, df.eC, param_labels=[r"$C_\mathrm{amp}$", r"$\phi$", r"$C_\mathrm{eq}$"])
+fig.legend(B_plots[0], [B_label], loc='upper center', bbox_to_anchor=(1, 1.1), title="field cal")
 
-###plotting sin fit C 
-ts = np.linspace(min(df.index), max(df.index), 100)
-ax.plot(ts, sine_C(ts, *poptsC), ls="-", color='mediumvioletred',
-		marker="", label=plabelC)
-ax_B.plot(ts, sine_A(ts, *poptsB), ls="-", color='cornflowerblue',	
-			marker="", label=plabelB)
+make_plot_title(fig, run, pulse_time, wiggle_freq, 
+				dropped_list, [poptsA[1], poptsB[1], poptsC[1]], [perrsA[1], perrsB[1], perrsC[1]], 
+				B_phase, eB_phase,
+				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
+					r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
+					r"$\phi$ for $C$ - $B$ cal."], y=1.3)
 
-###plotting the Field wiggle in B (G)
-B_phase = field_cal['B_phase'].values[0] 
-eB_phase = field_cal['e_B_phase'].values[0]
-field_params = field_cal[['B_amp', 'B_phase', 'B_offset']].values[0]
-Bs = sine_A(ts, *field_params)
+fig.tight_layout()
 
-B_cal_label = fit_label(field_cal[['B_amp', 'B_phase', 'B_offset']].values[0], 
-					field_cal[['e_B_amp', 'e_B_phase', 'e_B_offset']].values[0],
-					[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"])
-
-B_cal = ax_B.plot(ts, Bs, color="cornflowerblue", ls='--', marker="")
-
-# flip y axis instead of phase shifting
-ax_B.invert_yaxis()
-
-fig.legend(B_cal, [B_cal_label], loc='upper center', bbox_to_anchor=(1, 1.1), title="field cal")
-
-###plotting residuals
-resid = fig.add_subplot(gs[1], sharex=ax)
-
-resid.axhline(0, ls="--", color="lightgrey", marker="")
-
-resid.errorbar(df.index, df.C-sine_A(df.index, *poptsC), df.eC, color='mediumvioletred')
-resid.errorbar(df.index, df.B-sine_A(df.index, *poptsB), yerr=df.eB, 
-			marker='s', color='cornflowerblue', markerfacecolor='white')
-
-resid.set_xlabel("Time (ms)")
-
-ax.legend(loc=0)
-ax_B.legend(loc=0)
-
-# reorder axes so legend is not covered by B line
-# ax.set_frame_on(False)
-ax_B.set_zorder(2)
-ax_B.patch.set_visible(False)
-B_cal[0].set_visible(False)
-
-
-###Finding the phase shift by subtracting various fits
-# add pi offset to B field to compare phase shift
-phases = np.array([poptsA[1] - poptsB[1] + np.pi,
-		poptsB[1] - (B_phase),
-		poptsC[1] - (B_phase) + np.pi
-])
-ephases = np.sqrt([
-	(perrsA[1]**2 + perrsB[1]**2),
-	(perrsB[1]**2 + eB_phase**2),
-	(perrsC[1]**2 + eB_phase**2)
-	])
-
-# convert angles from [-2pi, 2pi] to between [-pi, pi]
-for i, p in enumerate(phases):
-	# prop error?
-	phases[i] = (p + np.pi) % (2 * np.pi) - np.pi 
-
-fits = fit_label(phases, ephases, [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
-									r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
-									r"$\phi$ for $C$ - $B$ cal."], 
-						units = ["rad", r"rad", r"rad"], digits=2)
-	
-fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
-			f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=1.3
-			)
-
-# fig.tight_layout()
-	
 if Export == True and fix_width == True: # this complains when fix_width is false,  because there are mismatched num of params now
 	csv_path = os.path.join(analysis_folder, f'phase_shift_2025_summary.csv')
 	write_header = not os.path.exists(csv_path)
@@ -710,7 +642,7 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 		already_logged = run_id in existing_df.index
 	else:
 		already_logged = False
-	
+	HFT_or_dimer = 'HFT' if is_HFT else 'dimer'
 	if not already_logged:
 		csv_df = pd.DataFrame({
 			'Pulse Time (us)': pulse_time,
@@ -731,7 +663,8 @@ if Export == True and fix_width == True: # this complains when fix_width is fals
 			'Error of Sin Fit of f0':[perrsf0],
 			'TRACK_BG':track_bg,
 			'FIX_WIDTH':fix_width,
-			'SINGLE_SHOT':single_shot
+			'SINGLE_SHOT':single_shot,
+			'HFT_or_dimer':HFT_or_dimer
 		}, index=[run_id])  
 
 		csv_df.to_csv(csv_path, mode='a', header=write_header, index=True, sep=',')
