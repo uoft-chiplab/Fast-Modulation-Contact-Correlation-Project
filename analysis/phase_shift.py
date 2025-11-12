@@ -47,7 +47,7 @@ e_RabiperVpp47 = 0.22
 phaseO_OmegaR = lambda VVA, freq: 2*pi*RabiperVpp47 * Vpp_from_VVAfreq(VVA, freq)
 
 # get metadata info
-meta_df = pd.read_csv('metadata.csv')\
+meta_df = pd.read_csv('metadata.csv')
 meta_df = meta_df[meta_df['run']==run]
 if meta_df.empty:
     print(f'no meta data for {run}, running now')
@@ -278,7 +278,7 @@ def bg_over_scan(datfiles, plot=False):
 y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 datfiles = glob(f"{runpath}*=*.dat")
-runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be same for all files
+runname = datfiles[0].split(os.sep)[-2].lower() # get run folder name, should be same for all files
 # calculate bg over time; needs to load all the datfiles first
 if track_bg:
 	popts_c5bg, perrs_c5bg = bg_over_scan(datfiles, plot=True)
@@ -293,10 +293,10 @@ dropped_list = []
 valid_results = [] # only for dimer meas.
 
 for i, fpath in enumerate(datfiles):
-	filename = fpath.split("\\")[-1]
+	filename = fpath.split(os.sep)[-1]
 	print(filename)
 
-	data = Data(filename)
+	data = Data(filename, path=fpath)
 	if i==0:
 		time_column_name = data.find_column('wiggle') # find which col has the wiggle time, only run once
 	
