@@ -5,8 +5,6 @@ Plots dimer spectra for each wiggle time (ac) or field value (dc) if show_dimer_
 
 Assumes fixed sinc^2 width for each dimer fit, and 0 background transfer.
 
-Set plot_dc==True to plot dc field points along with ac fits, given dc_cal_path
-
 Add times to dropped_list to exclude. times in dropped_list must match wiggle times in df
 
 Remember to change field_cal run name to match wiggle run for correct B plot!
@@ -23,13 +21,12 @@ from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-07_E"
+run = "2025-10-18_O"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export =False
+Export =True
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
-plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
@@ -50,7 +47,7 @@ e_RabiperVpp47 = 0.22
 phaseO_OmegaR = lambda VVA, freq: 2*pi*RabiperVpp47 * Vpp_from_VVAfreq(VVA, freq)
 
 # get metadata info
-meta_df = pd.read_csv('metadata.csv')
+meta_df = pd.read_csv('metadata.csv')\
 meta_df = meta_df[meta_df['run']==run]
 if meta_df.empty:
     print(f'no meta data for {run}, running now')
@@ -74,7 +71,6 @@ pulse_time = meta_df['pulse_time'].values[0] #
 wiggle_freq = meta_df['freq'].values[0] # kHz
 VVA = meta_df['VVA'].values[0] # assumes just the max VVA for everything
 ToTF = meta_df['ToTF'].values[0] 
-### TODO: incorporate into metadata
 EF = meta_df['EF'].values[0]/h # Hz
 # Load CCC data for f0 to B conversion
 CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', 'f0'], delimiter='\s')
@@ -286,6 +282,8 @@ runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be s
 # calculate bg over time; needs to load all the datfiles first
 if track_bg:
 	popts_c5bg, perrs_c5bg = bg_over_scan(datfiles, plot=True)
+else: 
+	popts_c5bg = np.array([])
 	
 # set up dataframe to hold dimer fits
 columns = ["A", "x0", "eA", "ex0", 'C', 'eC', 'B', 'eB'] if fix_width else ["A", "x0", "width", "eA", "ex0", "ewidth", 'C', 'eC', 'B', 'eB']
@@ -294,12 +292,14 @@ df.index.name = "middle_pulse_time"
 dropped_list = []
 valid_results = [] # only for dimer meas.
 
-for fpath in datfiles:
+for i, fpath in enumerate(datfiles):
 	filename = fpath.split("\\")[-1]
 	print(filename)
 
 	data = Data(filename)
-	time_column_name = data.data.columns[data.data.columns.str.contains('wiggle',case=False)][0] # should get "Wiggle Time" or "wiggletime"
+	if i==0:
+		time_column_name = data.find_column('wiggle') # find which col has the wiggle time, only run once
+	
 	
 	if data.data[time_column_name][0] in dropped_list:
 		print(f'dropping time at {data.data[time_column_name][0]}')
@@ -360,7 +360,7 @@ for fpath in datfiles:
 
 		if not single_shot:
 			dimerdata = find_transfer(data)
-			popts, perrs, plabel, sinc2 = fit_sinc2(data[["detuning", "c5transfer"]].values, 
+			popts, perrs, plabel, sinc2 = fit_sinc2(dimerdata[["detuning", "c5transfer"]].values, 
 														width=width)
 		else : 
 			dimerdata = find_transfer(data, popts_c5bg)
@@ -557,6 +557,8 @@ def make_plot_title(fig, run, pulse_time, wiggle_freq, dropped_list,
 		
 	fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
 				f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=y)
+	
+	return phases, ephases
 
 poptsA, perrsA, plabelA, sine_A = plot_and_fit_sine(df, "A", wiggle_freq, ax0, 
 													axrs[0], ylabel="peak transfer")
@@ -591,7 +593,7 @@ ax1.patch.set_visible(False)
 ax2.set_zorder(2)
 ax2.patch.set_visible(False)
 
-make_plot_title(fig, run, pulse_time, wiggle_freq, 
+phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, 
 				dropped_list, [poptsA[1], poptsf0[1], poptsC[1]], [perrsA[1], perrsf0[1], perrsC[1]], 
 				B_phase, eB_phase,
 				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
@@ -623,7 +625,7 @@ poptsB, perrsB, plabelB, __ = plot_and_fit_sine(df, "B", wiggle_freq, ax_B, resi
 
 fig.legend(B_plots[0], [B_label], loc='upper center', bbox_to_anchor=(1, 1.1), title="field cal")
 
-make_plot_title(fig, run, pulse_time, wiggle_freq, 
+phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, 
 				dropped_list, [poptsA[1], poptsB[1], poptsC[1]], [perrsA[1], perrsB[1], perrsC[1]], 
 				B_phase, eB_phase,
 				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 

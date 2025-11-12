@@ -99,6 +99,8 @@ def contact_time_delay(phi, period):
 
 def Linear(x, m, b):
 	return m*x + b
+def Linear_no_intercept(x, m):
+	return m*x
 
 # load pickle
 if load == True:
@@ -395,19 +397,34 @@ for i, plot_param in enumerate(plot_params):
 fig.suptitle(r'Summary: analyzing amplitude (uncertainties not prop. correctly)')
 fig.tight_layout()
 
-fig, ax=plt.subplots(2,1)
+
+# show EF, T, ToTF of every data point
+fig, ax=plt.subplots(3,1)
 xd = data['T']
 yd = data['EF']/h
+yd_mean = yd.mean()
+yd_std = yd.std()
 
 for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
 	ax[0].plot(x, y, color=color, marker=marker, mec=darken(color))
+ax[0].hlines(y=yd_mean, xmin=xd.min(), xmax=xd.max(), ls='--', color='gray')
+ax[0].fill_between(xd.sort_values(ascending=True), yd_mean-yd_std, yd_mean + yd_std, color='gray', alpha=0.2)
 ax[0].set(xlabel=r'$T$', ylabel=r'$E_F$')
 
 xd = data['ToTF']
 
 for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
 	ax[1].plot(x, y, color=color, marker=marker, mec=darken(color))
+ax[1].hlines(y=yd_mean, xmin=xd.min(), xmax=xd.max(), ls='--', color='gray')
+ax[1].fill_between(xd.sort_values(ascending=True), yd_mean-yd_std, yd_mean + yd_std, color='gray', alpha=0.2)
 ax[1].set(xlabel=r'$T/TF$', ylabel=r'$E_F$')
+
+xd = data['run']
+for x, y,color, marker in zip(xd, yd, colors_data, markers_data):	
+	ax[2].plot(x[5:], y, color=color, marker=marker, mec=darken(color))
+ax[2].set(xlabel=r'run name', ylabel=r'$E_F$')
+for label in ax[2].get_xticklabels():
+	label.set_rotation(90)
 
 fig.tight_layout()
 
@@ -418,4 +435,25 @@ for x, y,color, marker in zip(x_data, y_data, colors_data, markers_data):
 	ax_tau[1].set(
 		xlabel = 'T (Hz)'
 	)
+
+
+# some additional checks
+fig, ax = plt.subplots()
+x_data = data['alpha_AC_amp']
+y_data = data['contact_AC_amp']
+y_err = data['contact_AC_amp_err']
+popt, pcov = curve_fit(Linear_no_intercept, x_data, y_data, sigma=y_err)
+# plot linear fit
+xs = np.linspace(x_data.min(), x_data.max(), 20)
+ax.plot(xs, Linear_no_intercept(xs, popt), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
+
+# plot data points
+for x, y, yerr, color, marker in zip(x_data, y_data, y_err, colors_data, markers_data):
+	ax.errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+
+ax.legend()
+ax.set(
+	xlabel=r'Amplitude of $\alpha_\mathrm{AC}$',
+	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
+)
 
