@@ -6,7 +6,7 @@ Data is currently focused on recent (Sep/Oct 2025) data for a 10 kHz 1.8 Vpp dri
 import os
 import sys
 root_project = os.path.dirname(os.getcwd())
-
+root_root = os.path.dirname(root_project)
 # Fast-Modulation-Contact-Correlation-Project\analysis
 module_folder = os.path.join(root_project, "analysis")
 if module_folder not in sys.path:
@@ -18,6 +18,7 @@ from scipy.interpolate import make_smoothing_spline
 ### FLAGS
 TALK = 0
 EXPORT = True
+CORR_SAT = True
 ### NUMBERS
 # runs
 runs = [
@@ -46,6 +47,13 @@ EF = 10.5 # kHz
 Num = 8520
 
 ### FUNCTION DEFINITIONS
+sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_dimer.csv"))
+def saturation_scale(x, x0):
+	""" 
+	Saturation corection of data. 
+	x is OmegaR^2 and x0 is fit 1/e Omega_R^2 
+	"""
+	return x/x0*1/(1-np.exp(-x/x0))
 def find_transfer(df):
 	"""
 	given df output from matlab containing atom counts, returns new df containing detuning, 
@@ -171,7 +179,7 @@ for run, ToTF in zip(runs, ToTFs):
 	y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 	runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 	datfiles = glob(f"{runpath}*.dat")
-	runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be same for all files
+	runname = datfiles[0].split(os.sep)[-2].lower() # get run folder name, should be same for all files
 	print(f'Run name = {runname}')
 
 	try:

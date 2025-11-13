@@ -21,7 +21,7 @@ from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-10-21_H"
+run = "2025-10-18_O"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
@@ -30,7 +30,7 @@ amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
-single_shot = False
+single_shot = True
 track_bg = False
 rerun = False
 
@@ -392,7 +392,11 @@ for i, fpath in enumerate(datfiles):
 			if CORR_SAT:
 				sat_scale = sat_scale_df['x0_avg_kHz2'].mean() * (2*np.pi)**2 * 1e6 # 1/s
 				e_sat_scale = sat_scale_df['e_x0_avg_kHz2'].mean() * (2 * np.pi)**2 * 1e6 #1/s
-				dimerdata['corr_sat'] = saturation_scale(dimerdata['OmegaR2'], sat_scale)
+				cal_time = sat_scale_df['pulse_time_ms'].values[0] * 1000 # this should be 10
+				print(f'Saturation curves were calibrated with {cal_time} us pulses.')
+				# this is for fudging saturation when the pulse time is different from the calibration curve pulse time, almost always 10
+				time_scale= (pulse_time/cal_time)**2 
+				dimerdata['corr_sat'] = saturation_scale(time_scale*dimerdata['OmegaR2'], sat_scale)
 				dimerdata.loc[:, 'c5transfer'] = \
 						(dimerdata['c5transfer'].multiply(\
 							dimerdata['corr_sat'], axis=0)) # the explicitness here avoids in-place broadcasting errors
