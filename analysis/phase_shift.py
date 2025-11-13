@@ -21,16 +21,16 @@ from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-10-18_O"
+run = "2025-10-21_H"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export =True
+Export =False
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
-single_shot = True
+single_shot = False
 track_bg = False
 rerun = False
 
@@ -38,7 +38,6 @@ rerun = False
 CORR_PULSECONV = True
 CORR_SAT =True
 CORR_CFUDGE = True
-sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
 
 # this fudges the Rabi calibrated at 47 MHz for the attenuation at 43, 
 # but a calibration directly at 43 would be better
@@ -59,8 +58,16 @@ if meta_df.empty:
 
 # read HFT vs dimer settings
 is_HFT = meta_df["is_HFT"].values[0] #else "dimer"
-pulse_type =  meta_df["pulse_type"]
-pulse_area_corr = np.sqrt(0.31) if (pulse_type.values[0] == "blackman") else 1
+if is_HFT and CORR_SAT:
+	sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
+else:
+	sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_dimer.csv"))
+
+pulse_type =  meta_df["pulse_type"].values[0]
+if np.isnan(pulse_type):
+	pulse_type = "square"
+	print(r"Pulse type in metadata was NaN, defaulting to {pulse_type}")
+pulse_area_corr = np.sqrt(0.31) if (pulse_type == "blackman") else 1
 
 # put this into metadata?
 xlabel = 'Times [ms]'
@@ -92,7 +99,10 @@ def sine(x, omega, A, p, c):
 	
 # I want to move this somewhere else. Maybe put it in preamble?
 def saturation_scale(x, x0):
-	""" x is OmegaR^2 and x0 is fit 1/e Omega_R^2 """
+	""" 
+	Saturation corection of data. 
+	x is OmegaR^2 and x0 is fit 1/e Omega_R^2 
+	"""
 	return x/x0*1/(1-np.exp(-x/x0))
 
 def f0_to_B_CCC(x):
@@ -108,7 +118,7 @@ def find_transfer(data, popts_c5bg=np.array([])):
 	5 and 9 counts, and transfer/loss
 	TODO account for tracking bg over whole scan or not
 	"""
-	run_data = data.data[["cyc","detuning", "VVA", "c5", "c9"]].copy()
+	run_data = data.data[["cyc","detuning", "VVA", "OmegaR","OmegaR2", "c5", "c9"]].copy()
 
 	# assumes popts_c5bg is a np array
 	if popts_c5bg.any():
@@ -225,13 +235,13 @@ def Contact_from_amplitude(A, eA, EF, OmegaR, trf):
 	A -- fitted amplitude to \alpha
 	eA -- error on A
 	EF -- Fermi energy in Hz
-	OmegaR -- Rabi frequency in kHz
+	OmegaR -- Rabi frequency in 1/s
 	trf -- rf pulse time in us
 	returns dimer spectral weight (Id), error in Id, contact/NkF (C, technically Ctilde), error in C
 	TODO: proper error propgation from A, error elsewhere
 	"""
 	# scale fitted amplitude to gammatilde
-	gammatilde = h*EF / (hbar * pi * (OmegaR*1e3)**2 * (trf/1e6)) * A 
+	gammatilde = h*EF / (hbar * pi * (OmegaR)**2 * (trf/1e6)) * A 
 	### TODO: uncertainty analysis that considers uncertainty in EF and OmegaR
 	e_gammatilde = eA/A * gammatilde
 	# calculate Id (dimer spectral weight) from gammatilde and then C
@@ -356,14 +366,38 @@ for i, fpath in enumerate(datfiles):
 		df.loc[middle_pulse_time, 'eB'] = 0 # TODO
 		
 	else:
-		data.data['OmegaR'] = phaseO_OmegaR(VVA, data.data['freq'])
+		# I want the dimer analysis to also be refactored to using the Data class method data.analysis()
+		data.data['OmegaR'] = phaseO_OmegaR(VVA, data.data['freq']) * pulse_area_corr * 1000 # ultimately, 2pi Hz
+		data.data['OmegaR2'] = data.data['OmegaR']**2
 
 		if not single_shot:
 			dimerdata = find_transfer(data)
+			if CORR_SAT:
+				sat_scale = sat_scale_df['x0_avg_kHz2'].mean() * (2*np.pi)**2 * 1e6 # 1/s
+				e_sat_scale = sat_scale_df['e_x0_avg_kHz2'].mean() * (2 * np.pi)**2 * 1e6 #1/s
+				cal_time = sat_scale_df['pulse_time_ms'].values[0] * 1000 # this should be 10
+				print(f'Saturation curves were calibrated with {cal_time} us pulses.')
+				# this is for fudging saturation when the pulse time is different from the calibration curve pulse time, almost always 10
+				time_scale= (pulse_time/cal_time)**2 
+				dimerdata['corr_sat'] = saturation_scale(time_scale * dimerdata['OmegaR2'], sat_scale)
+				dimerdata.loc[:, 'c5transfer'] = \
+					(dimerdata['c5transfer'].multiply(
+						dimerdata['corr_sat'], axis=0)) # the explicitness here avoids in-place broadcasting errors
+				dimerdata['CORR_SAT'] = True # flag for checking
+				print(f'Applied saturation correction of approximately = {dimerdata.corr_sat.mean():.2f}')
 			popts, perrs, plabel, sinc2 = fit_sinc2(dimerdata[["detuning", "c5transfer"]].values, 
 														width=width)
 		else : 
 			dimerdata = find_transfer(data, popts_c5bg)
+			if CORR_SAT:
+				sat_scale = sat_scale_df['x0_avg_kHz2'].mean() * (2*np.pi)**2 * 1e6 # 1/s
+				e_sat_scale = sat_scale_df['e_x0_avg_kHz2'].mean() * (2 * np.pi)**2 * 1e6 #1/s
+				dimerdata['corr_sat'] = saturation_scale(dimerdata['OmegaR2'], sat_scale)
+				dimerdata.loc[:, 'c5transfer'] = \
+						(dimerdata['c5transfer'].multiply(\
+							dimerdata['corr_sat'], axis=0)) # the explicitness here avoids in-place broadcasting errors
+				dimerdata['CORR_SAT'] = True # flag for checking
+				print(f'Applied saturation correction of approximately = {dimerdata.corr_sat.mean():.2f}')
 			# to keep structure consistent, fake the popts and perrs
 			popts = [dimerdata['c5transfer'].mean(), dimerdata['detuning'].mean()]
 			epsilon=1e-9
@@ -375,7 +409,7 @@ for i, fpath in enumerate(datfiles):
 		# calculate GammaTilde
 		dimerdata['GammaTilde'] = GammaTilde(dimerdata['c5transfer'], 
 									h*EF, 
-									data.data['OmegaR'].values[0]*1e3,
+									dimerdata['OmegaR'],
 									pulse_time/1e6)
 		detuning, c5transfer, c5gammatilde = dimerdata["detuning"], dimerdata["c5transfer"], dimerdata["GammaTilde"]
 
@@ -396,7 +430,7 @@ for i, fpath in enumerate(datfiles):
 		if popts[0] > amp_cutoff: 
 			# C/NkF from amplitude
 			Id, e_Id, contact, e_contact = \
-				Contact_from_amplitude(popts[0], perrs[0], EF, data.data['OmegaR'].mean(), pulse_time)
+				Contact_from_amplitude(popts[0], perrs[0], EF, dimerdata['OmegaR'].mean(), pulse_time)
 
 			df.loc[middle_pulse_time, ["A", "x0", "eA", "ex0"]] = np.concatenate([popts, perrs]) # lists should be concatenated in order
 			df.loc[middle_pulse_time, ['C', 'eC']] = [contact, e_contact]
