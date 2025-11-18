@@ -381,7 +381,7 @@ for i, plot_param in enumerate(plot_params):
 		data['contact_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
 		data['contact_rel_amp'] = data['contact_AC_amp']/data['contact_DC_amp']
 		data['contact_rel_amp_err'] = np.sqrt((data['contact_AC_amp_err']/data['contact_AC_amp'])**2 +\
-									   (DC_amps_err/DC_amps)**2) * data['contact_rel_amp']
+										(DC_amps_err/DC_amps)**2) * data['contact_rel_amp']
 		rel_amps = data['contact_rel_amp']
 		e_rel_amps = data['contact_rel_amp_err']
 	

@@ -125,14 +125,14 @@ HFT = True
 detuning = 0.150 # MHz
 # times
 pulsetime=0.020
-t = np.array([0.32, 0.34, 0.36, 0.38, 0.40, 0.42, 0.44, 0.46, 0.48])
+t = np.array([0.32, 0.33, 0.34, 0.36, 0.37, 0.38, 0.39, 0.40, 0.42, 0.43, 0.44])
 # t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
 # 					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
 np.random.shuffle(t)
-f = 6 #kHz
+f = 10 #kHz
 amp = 1.8 # Vpp
 vva= 10
-reps = 7
+reps = 15
 
 ###dimer is formed in the middle of the pulsetime
 t_pulse = t - pulsetime/2

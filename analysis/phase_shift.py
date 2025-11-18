@@ -23,11 +23,11 @@ from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-07_E"
+run = "2025-11-17_N"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
-Export =False
+Export =True
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 plot_dc = False # whether or not to plot DC field points from DC_cal_csv
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
@@ -558,6 +558,8 @@ def make_plot_title(fig, run, pulse_time, wiggle_freq, dropped_list,
 	fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
 				f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=y)
 
+	return phases, ephases
+
 poptsA, perrsA, plabelA, sine_A = plot_and_fit_sine(df, "A", wiggle_freq, ax0, 
 													axrs[0], ylabel="peak transfer")
 
@@ -591,7 +593,7 @@ ax1.patch.set_visible(False)
 ax2.set_zorder(2)
 ax2.patch.set_visible(False)
 
-make_plot_title(fig, run, pulse_time, wiggle_freq, 
+phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, 
 				dropped_list, [poptsA[1], poptsf0[1], poptsC[1]], [perrsA[1], perrsf0[1], perrsC[1]], 
 				B_phase, eB_phase,
 				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
