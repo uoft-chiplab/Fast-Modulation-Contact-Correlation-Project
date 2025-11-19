@@ -23,7 +23,7 @@ from contact_correlations.UFG_analysis import calc_contact
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-17_N"
+run = "2025-11-18_J"
 
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS= True
@@ -40,7 +40,7 @@ rerun = False
 #CORRECTIONS
 CORR_PULSECONV = True
 CORR_SAT =True
-CORR_CFUDGE = True
+CORR_CFUDGE = False
 sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
 
 # this fudges the Rabi calibrated at 47 MHz for the attenuation at 43, 

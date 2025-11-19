@@ -304,10 +304,35 @@ for b, BVT in enumerate(BVTs):
 
 # comparing AC to DC contact. This code is very ugly because of different data processing over time.
 # get DC dimer amplitudes (currently only valid for ToTF=0.3)
+####to do choose btw dimer or HFT and what temp 
 DCdf = pd.read_csv(os.path.join(root_folder, 'exploratory_and_misc/DC_contact.csv'))
-DCdf['HFT_or_dimer'] = 'dimer'
+# DCdf['HFT_or_dimer'] = 'dimer'
 DCdf['alpha'] = DCdf['popts'].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
+DCdf.sort_values(by='Bfield')
+Bs_d = np.linspace(DCdf['Bfield'].min(), DCdf['Bfield'].max(), 10)
+
+###yes this is dumb but i think it works 
+cold_subset = DCdf[DCdf['ToTF'] < 0.3]
+hot_subset = DCdf[DCdf['ToTF'] > 0.3]
+
+cold_subset.sort_values(by='Bfield')
+alphas_cold = np.array(cold_subset['alpha'].apply(lambda x: x[0]).tolist())
+field_to_contact_dimer_cold = interp1d(cold_subset['Bfield'], cold_subset['contact'], kind='linear', fill_value='extrapolate')
+field_to_alpha_dimer_cold = interp1d(cold_subset['Bfield'], alphas_cold, kind='linear', fill_value='extrapolate')
+Cs_d_cold = field_to_contact_dimer_cold(Bs_d)
+As_d_cold = field_to_alpha_dimer_cold(Bs_d)
+
+hot_subset.sort_values(by='Bfield')
+alphas_hot = np.array(hot_subset['alpha'].apply(lambda x: x[0]).tolist())
+field_to_contact_dimer_hot = interp1d(hot_subset['Bfield'], hot_subset['contact'], kind='linear', fill_value='extrapolate')
+field_to_alpha_dimer_hot = interp1d(hot_subset['Bfield'], alphas_hot, kind='linear', fill_value='extrapolate')
+Cs_d_hot = field_to_contact_dimer_hot(Bs_d)
+As_d_hot = field_to_alpha_dimer_hot(Bs_d)
+
+
+
 DCdf = DCdf[DCdf['ToTF'] < 0.3]
+# DCdf_hot = DCdf[DCdf['ToTF'] > 0.3]
 DCdf.sort_values(by='Bfield')
 alphas = np.array(DCdf['alpha'].apply(lambda x: x[0]).tolist())
 field_to_contact_dimer = interp1d(DCdf['Bfield'], DCdf['contact'], kind='linear', fill_value='extrapolate')
@@ -348,9 +373,9 @@ data=pd.merge(data, field_cal_df, on='field_cal_run')
 # for 202.14 +/- Bamp. Calculate difference. Call it DC amp.
 # data['HFT_or_dimer'] = "HFT" # test
 data['contact_DC_amp'] = np.where(
-    data['HFT_or_dimer'] == 'dimer',
-    np.abs(field_to_contact_dimer(202.14 - data['B_amp']) - field_to_contact_dimer(202.14 + data['B_amp'])) / 2,
-    np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2
+	data['HFT_or_dimer'] == 'dimer',
+	np.abs(field_to_contact_dimer(202.14 - data['B_amp']) - field_to_contact_dimer(202.14 + data['B_amp'])) / 2,
+	np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2,
 )
 data['alpha_DC_amp'] = np.where(
     data['HFT_or_dimer'] == 'dimer',
@@ -359,32 +384,42 @@ data['alpha_DC_amp'] = np.where(
     # np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2
 )
 
-# data['contact_DC_amp'] = np.abs(field_to_contact_dimer(202.14-data['B_amp']) - field_to_contact_dimer(202.14+data['B_amp'])) /2 # divide by 2 to compare to sine fit amp
-# data['alpha_DC_amp'] = np.abs(field_to_alpha_dimer(202.14-data['B_amp']) - field_to_alpha_dimer(202.14+data['B_amp'])) /2
 
+
+ToTFcutoff = 0.4
+data_dimer = data[data['HFT_or_dimer'] == 'dimer']
+data_dimer['contact_DC_amp'] = np.where(
+data_dimer['ToTF'] < ToTFcutoff, 
+    (field_to_contact_dimer_cold(202.14 - data_dimer['B_amp']) - 
+     field_to_contact_dimer_cold(202.14 + data_dimer['B_amp'])) / 2,
+    (field_to_contact_dimer_hot(202.14 - data_dimer['B_amp']) - 
+     field_to_contact_dimer_hot(202.14 + data_dimer['B_amp'])) / 2
+)
+data_HFT = data[data['HFT_or_dimer'] == 'HFT']
+data_HFT['contact_DC_amp'] = np.where(
+data_HFT['ToTF'] < ToTFcutoff, 
+    (field_to_contact_HFT(202.14 - data_HFT['B_amp']) - 
+     field_to_contact_HFT(202.14 + data_HFT['B_amp'])) / 2,
+    (field_to_contact_HFT(202.14 - data_HFT['B_amp']) - 
+     field_to_contact_HFT(202.14 + data_HFT['B_amp'])) / 2
+)
+
+data = pd.concat([data_dimer,data_HFT])
 for i, plot_param in enumerate(plot_params):
 	if i==0:
-		DC_amps = data['alpha_DC_amp']
-		DC_amps_err = data['alpha_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY CORRECTLY
-		data['alpha_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
-		data['alpha_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
-		data['alpha_rel_amp'] = data['alpha_AC_amp']/data['alpha_DC_amp']
-		data['alpha_rel_amp_err'] = np.sqrt((data['alpha_AC_amp_err']/data['alpha_AC_amp'])**2 +\
-									   (DC_amps_err/DC_amps)**2) * data['alpha_rel_amp']
-		rel_amps = data['alpha_rel_amp']
-		e_rel_amps = data['alpha_rel_amp_err']
-
+		key = 'alpha'
 	else:
-		DC_amps = data['contact_DC_amp']
-		DC_amps_err = data['contact_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY CORRECTLY
-		data['contact_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
-		data['contact_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
-		data['contact_rel_amp'] = data['contact_AC_amp']/data['contact_DC_amp']
-		data['contact_rel_amp_err'] = np.sqrt((data['contact_AC_amp_err']/data['contact_AC_amp'])**2 +\
-										(DC_amps_err/DC_amps)**2) * data['contact_rel_amp']
-		rel_amps = data['contact_rel_amp']
-		e_rel_amps = data['contact_rel_amp_err']
-	
+		key = 'contact'
+
+	DC_amps = data[f'{key}_DC_amp']
+	DC_amps_err = data[f'{key}_DC_amp']/5 # TODO: PROPAGATE UNCERTAINTY CORRECTLY
+	data[f'{key}_AC_amp'] = np.array(data[plot_param].apply(lambda x: x[0]).tolist())
+	data[f'{key}_AC_amp_err'] = np.array(data['Error of ' + plot_param].apply(lambda x: x[0]).tolist())
+	data[f'{key}_rel_amp'] = data[f'{key}_AC_amp']/data[f'{key}_DC_amp']
+	data[f'{key}_rel_amp_err'] = np.sqrt((data[f'{key}_AC_amp_err']/data[f'{key}_AC_amp'])**2 +\
+									(DC_amps_err/DC_amps)**2) * data[f'{key}_rel_amp']
+	rel_amps = data[f'{key}_rel_amp']
+	e_rel_amps = data[f'{key}_rel_amp_err']
 
 	for x, y, ey,color, marker in zip(x_data, rel_amps, e_rel_amps, colors_data, markers_data):	
 		axs[i+2].errorbar(
