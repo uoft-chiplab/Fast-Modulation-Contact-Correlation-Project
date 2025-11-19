@@ -26,7 +26,7 @@ field_cal_folder = os.path.join(root_folder, r"FieldWiggleCal")
 import sys
 if library_folder not in sys.path:
 	sys.path.append(library_folder)
-from library import styles, colors, kB, h
+from library import styles, colors, kB, h, a97, mK, hbar
 from contact_correlations.UFG_analysis import BulkViscTrap
 import numpy as np
 import matplotlib.pyplot as plt
@@ -490,10 +490,39 @@ ax.set(
 	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
 )
 
-fig, ax = plt.subplots()
-y_data = data['contact_AC_amp']
-y_err = data['contact_AC_amp_err']
-ax.set(
-	xlabel=r'B',
-	ylabel=r'$\widetilde{C}_\mathrm{AC}/k_F a_0$'
+
+
+# plot C vs T
+fig, ax = plt.subplots(1, 2, figsize=(8,3))
+kF = np.sqrt(2*mK*data['EF'])/hbar
+Cs = [Cfit[-1] for i, Cfit in enumerate(data['Sin Fit of C'])]
+Cerrs = [Cfit[-1] for i, Cfit in enumerate(data['Error of Sin Fit of C'])]
+
+B0 = 202.14 # assume avg B is 202.14
+Bamp = data['B_amp']
+dkFa0_inv = 1/(kF*a97(B0 - Bamp)) - 1/(kF*a97(B0 + Bamp)) # max B - min B 
+
+dC_kFda0 = 2*data['contact_AC_amp']/dkFa0_inv # dC/d(kF a0)^-1 
+dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_amp'])**2 + (data['eEF']/data['EF'])**2)
+
+for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
+	ax[0].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+
+ax[0].set(
+	xlabel=r'$T/T_F$',
+	ylabel=r'$\langle\widetilde{C}_\mathrm{AC}\rangle$'
+)
+
+seen_markers = set()
+for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['ToTF'], dC_kFda0, dCkFda0_err, colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):
+	label = f"{pulse_type} {mod_freq}kHz" if marker not in seen_markers else None
+	if label:
+		seen_markers.add(marker)
+	ax[1].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='', label=label)
+
+
+ax[1].legend()
+ax[1].set(
+	xlabel=r'$T/T_F$',
+	ylabel=r'$\partial\widetilde{C}_\mathrm{AC}/\partial(k_F a_0)^{-1}$'
 )
