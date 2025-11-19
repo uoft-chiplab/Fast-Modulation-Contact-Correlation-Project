@@ -22,7 +22,7 @@ from contact_correlations.UFG_analysis import BulkViscTrap, calc_contact
 from scipy.optimize import curve_fit
 
 # Controls
-EXPORT =False
+EXPORT =True
 
 ### fit functions
 def Saturation(x, A, x0):

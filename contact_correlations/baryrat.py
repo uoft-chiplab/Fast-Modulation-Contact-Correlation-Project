@@ -14,6 +14,8 @@ except ImportError:
 else:
     from gmpy2 import mpfr, mpc
 
+from numba import jit 
+
 __version__ = '2.1.0'
 
 def _is_mp_array(x):
@@ -123,7 +125,8 @@ class BarycentricRational:
         self.nodes = np.asanyarray(z)
         self.values = np.asanyarray(f)
         self.weights = np.asanyarray(w)
-
+        
+    @jit(nopython=True)
     def __call__(self, x):
         """Evaluate rational function at all points of `x`."""
         zj,fj,wj = self.nodes, self.values, self.weights

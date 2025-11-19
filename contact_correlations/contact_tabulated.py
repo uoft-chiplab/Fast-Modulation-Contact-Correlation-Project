@@ -12,7 +12,7 @@ Ann.of Phys. 326, 3,2011,770-796,
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, interp1d
 import pandas as pd
 import os
 
@@ -32,7 +32,7 @@ test_contact_plot = True
 xlabel = 'T/T_F'
 ylabel = 'C/k_F^4'
 df[ylabel] = df[ylabel] * 3*np.pi**2 # contact density c/(k_F n) = C/k_F^4 * (3 pi^2)
-ContactInterpolation = lambda x: np.interp(x, df[xlabel], df[ylabel])
+ContactInterpolation = interp1d(df[xlabel], df['ylabel'], kind='linear', bounds_error=False) # old: lambda x: np.interp(x, df[xlabel], df[ylabel])
 xlow =0
 xhigh=1.2
 xs = np.linspace(xlow, xhigh, 100)

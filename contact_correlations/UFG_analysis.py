@@ -23,6 +23,7 @@ if library_folder not in sys.path:
 from library import plt_settings, tint_shade_color, tintshade, pi, mK, hbar
 from contact_correlations.contact_tabulated import ContactInterpolation
 from contact_correlations.baryrat import BarycentricRational
+from numba import jit 
 
 # paths
 proj_path = os.path.dirname(os.path.realpath(__file__))
@@ -108,6 +109,7 @@ def C_bulk(betamu):
 	Cbulk = ContactInterpolation(Theta(betamu))
 	return Cbulk
 
+@jit(nopython=True)
 def heating_C(T, betaomega, C):
 	"""compute heating rate at high frequency from contact density"""
 	"""C is just the integrated contact density without prefactors"""
@@ -130,9 +132,10 @@ def sumruleintC(betamu, Theta):
 	sumruleT = 2/pi*integral
 	return sumruleT
 
+@jit(nopython=True)
 def sumrule_zetaint(nus, zetas):
 	"""sumrule in Hz"""
-	sumrule = 2/pi*np.trapz(zetas, x=nus)
+	sumrule = 2/pi*np.trapezoid(zetas, x=nus)
 	return sumrule
 
 class BulkViscUniform:
@@ -203,11 +206,13 @@ class BulkViscUniform:
 
 eps = 1e-4
 
+@jit(nopython=True)
 def mutrap_est(ToTF):
 	a = -50e3
 	b = 21e3
 	return a*ToTF + b
 
+@jit(nopython=True)
 def weight_harmonic(v,betabaromega):
 	"""area of equipotential surface of potential value V/T=v=0...inf"""
 	return 2/(betabaromega**3)*np.sqrt(v/np.pi)
@@ -304,7 +309,6 @@ def C_trap(betamu, betabaromega,weight_func):
 	Ctrap,Ctraperr = quad(lambda v: weight_func(v,betabaromega)*eos_ufg(betamu-v)**(4/3)*ContactInterpolation(Theta(betamu-v)),0,np.inf,epsrel=eps)
 	return Ctrap
 
-
 class BulkViscTrap:
 	def __init__(self, ToTF, EF, barnu, nus, a0=None, mutrap_guess=None):
 		#
@@ -354,12 +358,12 @@ class BulkViscTrap:
 						betaomega,self.betabaromega,self.weight_func) for betaomega in betaomegas])
 		
 		self.ns = psd_trap(self.betamutrap,self.betabaromega,self.weight_func)/self.Ns # /self.lambda_T**3
-	
-		self.Ctrap =  C_trap(self.betamutrap, self.betabaromega, self.weight_func)/(self.kF*self.lambda_T)*(3*pi**2)**(1/3)/self.Ns/2
-		self.EdotC = self.A**2*np.array([heating_C(self.T,betaomega,
-				   C_trap(self.betamutrap, self.betabaromega, self.weight_func)) for betaomega in betaomegas])
-		self.EdotNormC = self.A**2*np.array([heating_C(self.T,betaomega, (self.kF*self.lambda_T)/(3*pi**2)**(1/3)) for betaomega in betaomegas])
-		
+
+		C_trap_unscaled = C_trap(self.betamutrap, self.betabaromega, self.weight_func)
+		self.Ctrap =  C_trap_unscaled/(self.kF*self.lambda_T)*(3*pi**2)**(1/3)/self.Ns/2
+		self.EdotC = self.A**2*heating_C(self.T, betaomegas, C_trap_unscaled)
+		self.EdotNormC = self.A**2*heating_C(self.T, betaomegas, (self.kF*self.lambda_T)/(3*pi**2)**(1/3))
+
 		# these were divided by A**4 for some reason when I first saw this code. Why?
 		self.zetaDrude = self.EdotDrude/self.A**2 * (self.lambda_T**2*self.kF**2)/(9*pi*nus**2*2*self.Ns)
 		self.zetaC = self.EdotC/self.A**2 * (self.lambda_T**2*self.kF**2)/(9*pi*nus**2*2*self.Ns)
@@ -374,9 +378,8 @@ class BulkViscTrap:
 		self.phiLR = np.arctan(2*np.pi*self.nus * self.tau)
 		self.phiLR_noz = np.arctan(2*np.pi*self.nus * self.tau_noz)
 		
-		self.EdotSphi = np.array([np.tan(phi)*betaomega*self.T/self.EF * \
-								 9*pi/self.kF**2/self.lambda_T**2 for phi, 
-								 betaomega in zip(self.phaseshiftsQcrit, betaomegas)])
+		self.EdotSphi = np.tan(self.phaseshiftsQcrit)*betaomegas*self.T/self.EF * \
+								 9*pi/self.kF**2/self.lambda_T**2
 		
 		# find frequency to change from Drude to contact scaling
 		nu_small = 0
@@ -454,7 +457,7 @@ def contact_from_Edot(Edot, freq, T, kF):
 	return C
 
 def phaseshift_from_zeta(nus, EF, zetas):
-	sumrule = np.trapz(zetas, x=nus)
+	sumrule = np.trapezoid(zetas, x=nus)
 	phi = np.arctan(nus/EF*zetas/sumrule)
 	return phi
 

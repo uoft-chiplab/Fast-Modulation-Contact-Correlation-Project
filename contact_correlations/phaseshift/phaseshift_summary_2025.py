@@ -74,7 +74,6 @@ def darken(rgba, factor=0.5):
 	"""
 	r, g, b, a = rgba
 	return (r * factor, g * factor, b * factor, a)
-
 def get_marker(value, HFT_or_dimer):
 	"""Map a numeric value to a marker. Hardcoded to map mod freqs (kHz) and also pulse type (HFT_or_dimer)."""
 	# markers = ['s', 'o', '^', 'x', 'D', '*']  # circle, square, triangle, etc.
@@ -99,47 +98,41 @@ def contact_time_delay(phi, period):
 
 def Linear(x, m, b):
 	return m*x + b
-def Linear_no_intercept(x, m):
-	return m*x
 
 # load pickle
+BVT_T_list = []
+BVT_tau_list = []
+
 if load == True:
 	with open(pickle_file, 'rb') as f:
 		BVTs = pickle.load(f)
-	
 	analysis = False
-		
+
 else: 
 	# compute BVT and save to pickle
 	BVTs = []
 	analysis = True
 
-BVT_T_list = []
-BVT_tau_list = []
-### generate BVT theory values for given ToTFs, EFs
-for i in range(len(ToTFs)):
-	ToTF = ToTFs[i]
-	EF = EFs[i]
-	
-	if analysis == False:
-		break
-	
-	T = ToTF*EF
-	nus = T*np.logspace(-2, 1, num)
-	# compute trap averaged quantities using Tilman's code
-	BVT = BulkViscTrap(ToTF, EF, barnu, nus)
-	BVT.tau_noz =  ((1.739) * BVT.T) * (2*np.pi)
-	BVT.phiLR_noz = np.arctan(2*np.pi*BVT.nus * 1/ BVT.tau_noz)
-	# compute time delays
-	BVT.time_delay = contact_time_delay(BVT.phaseshiftsQcrit, 1/BVT.nus)
-	BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)
-	BVT.rel_amp = 1/(np.sqrt(1+(2*np.pi*BVT.nus*BVT.tau)**2))
-	BVT_T_list.append(BVT.T)
-	BVT_tau_list.append(BVT.tau *1e6) # [us]
-	BVTs.append(BVT)
+	### generate BVT theory values for given ToTFs, EFs
+	for i, ToTF in enumerate(ToTFs):
+		EF = EFs[i]
 
-with open(pickle_file, 'wb') as f:
-	pickle.dump(BVTs, f)
+		T = ToTF*EF
+		nus = T*np.logspace(-2, 1, num)
+		# compute trap averaged quantities using Tilman's code
+		BVT = BulkViscTrap(ToTF, EF, barnu, nus)
+		BVT.tau_noz =  ((1.739) * BVT.T) * (2*np.pi)
+		BVT.phiLR_noz = np.arctan(2*np.pi*BVT.nus * 1/ BVT.tau_noz)
+		# compute time delays
+		BVT.time_delay = contact_time_delay(BVT.phaseshiftsQcrit, 1/BVT.nus)
+		BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)
+		BVT.rel_amp = 1/(np.sqrt(1+(2*np.pi*BVT.nus*BVT.tau)**2))
+		BVT_T_list.append(BVT.T)
+		BVT_tau_list.append(BVT.tau *1e6) # [us]
+		BVTs.append(BVT)
+
+	with open(pickle_file, 'wb') as f:
+		pickle.dump(BVTs, f)
 
 ### PLOTTING ###
 # figure for phase shift and related tau
@@ -157,10 +150,8 @@ for j, BVT in enumerate(BVTs):
 	x_theory = BVT.nus / BVT.T
 	y_theory = BVT.phiLR
 	EF_kHz = (BVT.T / BVT.ToTF) / 1e3
-	linestyle = ':'
-	marker =''
 	label = f'ToTF={BVT.T:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, ls=linestyle, marker=marker, color=get_color(BVT.T), label=label)
+	ax.plot(x_theory, y_theory, ls=':', marker='', color=get_color(BVT.T), label=label)
 
 # Plot data
 x_data = (data['Modulation Freq (kHz)']*1000)/data['T']
@@ -349,11 +340,10 @@ sus_df['HFT_or_dimer']='HFT'
 popt, pcov = curve_fit(Linear, sus_df['Bfield'], sus_df['C'], sigma=sus_df['e_C'])
 popt_fudged, pcov_fudged = curve_fit(Linear, sus_df['Bfield'], sus_df['fudgedC'], sigma=sus_df['e_fudgedC'])
 field_to_contact_HFT_unfudged = lambda B :Linear(B, *popt)
-field_to_contact_HFT = lambda B: Linear(B, *popt_fudged)
+field_to_contact_HFT_cold = lambda B: Linear(B, *popt_fudged)
 Bs_HFT = np.linspace(sus_df['Bfield'].min(), sus_df['Bfield'].max(), 10)
-Cs_HFT = field_to_contact_HFT(Bs_HFT)
+Cs_HFT = field_to_contact_HFT_cold(Bs_HFT)
 Cs_HFT_unfudged = field_to_contact_HFT_unfudged(Bs_HFT)
-
 fig2, ax = plt.subplots()
 ax.plot(DCdf['Bfield'], DCdf['contact'], marker='o', ls='', color='orchid', label='DC dimer')
 ax.plot(Bs_d, Cs_d, ls='--', marker='', color='orchid', label='dimer fit')
@@ -362,6 +352,14 @@ ax.plot(Bs_HFT, Cs_HFT, ls= '--', marker='', color='salmon', label='HFT fudged')
 ax.plot(Bs_HFT, Cs_HFT_unfudged, ls= '--', marker='', color='orange', label='HFT unfudged')
 ax.set(xlabel = 'Bfield [G]', ylabel = r'$\widetilde{C}$', title = r'DC C, $T/T_F \lesssim 0.3$')
 ax.legend()
+# dirty implementation for hot HFT sus, TODO clean up, want to comebine all temps
+sus_df_hot = pd.read_csv(os.path.join(root_folder, 'corrections//saturation_HFT_hot.csv'))
+sus_df_hot['HFT_or_dimer']='HFT'
+popt, pcov = curve_fit(Linear, sus_df_hot['Bfield'], sus_df_hot['C'], sigma=sus_df_hot['e_C'])
+popt_fudged_hot, pcov_fudged_hot = curve_fit(Linear, sus_df_hot['Bfield'], sus_df_hot['fudgedC'], sigma=sus_df_hot['e_fudgedC'])
+field_to_contact_HFT_hot = lambda B: Linear(B, *popt_fudged_hot)
+
+
 
 # need field cal amplitudes for each run
 # load wiggle field calibration
@@ -373,12 +371,12 @@ data=pd.merge(data, field_cal_df, on='field_cal_run')
 
 # from field_cal_run, find field amplitude for each run, then evaluate DC contact and alpha amplitude
 # for 202.14 +/- Bamp. Calculate difference. Call it DC amp.
-# data['HFT_or_dimer'] = "HFT" # test
-data['contact_DC_amp'] = np.where(
-	data['HFT_or_dimer'] == 'dimer',
-	np.abs(field_to_contact_dimer(202.14 - data['B_amp']) - field_to_contact_dimer(202.14 + data['B_amp'])) / 2,
-	np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2,
-)
+# # data['HFT_or_dimer'] = "HFT" # test
+# data['contact_DC_amp'] = np.where(
+# 	data['HFT_or_dimer'] == 'dimer',
+# 	np.abs(field_to_contact_dimer(202.14 - data['B_amp']) - field_to_contact_dimer(202.14 + data['B_amp'])) / 2,
+# 	np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2,
+# )
 data['alpha_DC_amp'] = np.where(
     data['HFT_or_dimer'] == 'dimer',
     np.abs(field_to_alpha_dimer(202.14 - data['B_amp']) - field_to_alpha_dimer(202.14 + data['B_amp'])) / 2,
@@ -400,10 +398,10 @@ data_dimer['ToTF'] < ToTFcutoff,
 data_HFT = data[data['HFT_or_dimer'] == 'HFT']
 data_HFT['contact_DC_amp'] = np.where(
 data_HFT['ToTF'] < ToTFcutoff, 
-    (field_to_contact_HFT(202.14 - data_HFT['B_amp']) - 
-     field_to_contact_HFT(202.14 + data_HFT['B_amp'])) / 2,
-    (field_to_contact_HFT(202.14 - data_HFT['B_amp']) - 
-     field_to_contact_HFT(202.14 + data_HFT['B_amp'])) / 2
+    (field_to_contact_HFT_cold(202.14 - data_HFT['B_amp']) - 
+     field_to_contact_HFT_cold(202.14 + data_HFT['B_amp'])) / 2,
+    (field_to_contact_HFT_hot(202.14 - data_HFT['B_amp']) - 
+     field_to_contact_HFT_hot(202.14 + data_HFT['B_amp'])) / 2
 )
 
 data = pd.concat([data_dimer,data_HFT])
@@ -477,10 +475,10 @@ fig, ax = plt.subplots()
 x_data = data['alpha_AC_amp']
 y_data = data['contact_AC_amp']
 y_err = data['contact_AC_amp_err']
-popt, pcov = curve_fit(Linear_no_intercept, x_data, y_data, sigma=y_err)
+popt, pcov = curve_fit(lambda x,m: Linear(x, m, b=0), x_data, y_data, sigma=y_err)
 # plot linear fit
 xs = np.linspace(x_data.min(), x_data.max(), 20)
-ax.plot(xs, Linear_no_intercept(xs, popt), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
+ax.plot(xs, Linear(xs, *popt, 0), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
 
 # plot data points
 for x, y, yerr, color, marker in zip(x_data, y_data, y_err, colors_data, markers_data):
@@ -492,3 +490,10 @@ ax.set(
 	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
 )
 
+fig, ax = plt.subplots()
+y_data = data['contact_AC_amp']
+y_err = data['contact_AC_amp_err']
+ax.set(
+	xlabel=r'B',
+	ylabel=r'$\widetilde{C}_\mathrm{AC}/k_F a_0$'
+)
