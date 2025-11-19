@@ -26,9 +26,10 @@ import pandas as pd
 from scipy.optimize import curve_fit
 
 # run metadata
-run = "2025-10-15_N" 
-wiggle_freq = 6# kHz
+run = "2025-11-19_C" 
+wiggle_freq = 20# kHz
 wiggle_amp = 1.8 # Vpp
+pulsetime = 10 # us
 note = ''
 
 # paramete
@@ -38,7 +39,7 @@ y_name = "fraction95"
 fit_func = FixedSinc2_bg
 num = 500
 save_final_plot = True
-
+EXPORT = True
 data_folder = os.getcwd() + run# change to analyse new run
 
 # Fixed sinusoidal function depending on given wiggle freq
@@ -63,8 +64,10 @@ for file in file_list:
 	data = Data(file, path=data_folder)
 	data_df = pd.concat([data_df, data.data], ignore_index=True)
 
+if "Pulse Time" not in data_df.columns:
+	data_df["Pulse Time"] = pulsetime
 pulse_lengths = np.unique(data_df["Pulse Time"])*1e3 # ms to us
-	
+
 popt_list = []
 perr_list = []
 B_list = []
@@ -73,7 +76,7 @@ delay_time_list = []
 pulse_length_list = []
 
 data_df['pulse_length'] = data_df['Pulse Time'] * 1e3  # Convert ms to us
-data_df['time'] = data_df['Wiggle Time']*1000 + data_df['pulse_length']/2.0
+data_df['time'] = data_df['wiggletime']*1000 + data_df['pulse_length']/2.0
 
 plot_data_list = [] 
 
@@ -94,8 +97,8 @@ for i, time in enumerate(data_df.time.unique()):
 		data.filename = f'delay time = {time} us, pulse length = {pulse_length} us'
 		
 		# fit fraction95 vs. freq with Sinc2
-		if time == 375:
-			data.data = data.data[data.data['time'] == 375.0 ].head(15)
+		# if time == 375:
+		# 	data.data = data.data[data.data['time'] == 375.0 ].head(15)
 		data.fit(fit_func, names = [x_name, y_name])
 		popt_list.append(data.popt)
 		perr_list.append(data.perr)
@@ -264,7 +267,8 @@ new_rows = combined_fcal_df[~combined_fcal_df.set_index(['run', 'pulse_length'])
 updated_df = pd.concat([summ_df, new_rows], ignore_index=True)
 
 # Save to CSV
-updated_df.to_csv(summ_path, index=False)
+if EXPORT:
+	updated_df.to_csv(summ_path, index=False)
 
 ax.set(title=run[0:10]+ ' ' + str(wiggle_freq) + " kHz, " + str(wiggle_amp) + " Vpp field wiggle cal")
 ax.set(xlabel='Time [us]', ylabel='Field [G]')

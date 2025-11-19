@@ -7,13 +7,12 @@
 # Modified by the chip lab.
 
 import numpy as np
-
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
 
 from constants import pi, mK, hbar
-from contact_correlations.baryrat import BarycentricRational
-from contact_correlations.luttinger_ward_calculations import \
+from baryrat import BarycentricRational
+from luttinger_ward_calculations import \
     contact_density, scale_susceptibility
 
 
@@ -336,7 +335,7 @@ class TrappedUnitaryGas:
         self.betamu, _ = find_betamu(self.T, ToTF, self.betabaromega)
 
         # Compute trap properties
-        self.tau = 1/gamma(self.betamu, self.T) * 2 * pi
+        self.tau = 1/gamma(self.betamu, self.T) / (2 * pi)
         self.Ns, self.EF, self.Theta, self.Epot = thermo_trap(self.T, 
                                                     self.betamu, self.betabaromega)
 
@@ -375,7 +374,8 @@ class TrappedUnitaryGas:
         integral, _ = quad(lambda v: weight_func(v, self.betabaromega) \
                             * eos_ufg(self.betamu-v) \
                             * scale_susceptibility(Theta(self.betamu-v)), 0, np.inf, epsrel=eps)
-        return 18*pi * integral / (2*self.Ns)
+        self.dCdkFa_inv = 18*pi * integral / (2*self.Ns)
+        return self.dCdkFa_inv
     
 
     def calc_distributions(self):
@@ -411,7 +411,7 @@ class TrappedUnitaryGas:
                             betaomega, self.betabaromega) for betaomega in betaomegas])
         self.phaseshiftsQcrit = np.arctan(self.nus * self.tau / (1 + (self.nus*self.tau)**2))
     
-        self.phiLR = np.arctan(self.nus * self.tau)
+        self.phiLR = np.arctan(2 * np.pi * self.nus * self.tau) # recall tau is 1/2pi
         
         self.EdotSphi = np.array([np.tan(phi)*betaomega*self.T/self.EF * \
                                  9*pi/self.kF**2/self.lambda_T**2 for phi, 

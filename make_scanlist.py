@@ -115,7 +115,7 @@ def generate_singleshot_scanlist(f0, VVA, n_peak, n_bg, wings=False, randomize=T
 	return scanlist
 
 
-export = True
+export =False
 # randomizes order freqs in scan list for each time
 randomize = True
 # single shot scan list vs. multiple detunings
@@ -125,13 +125,13 @@ HFT = True
 detuning = 0.150 # MHz
 # times
 pulsetime=0.020
-t = np.array([0.32, 0.33, 0.34, 0.36, 0.37, 0.38, 0.39, 0.40, 0.42, 0.43, 0.44])
+t = np.array([0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18])
 # t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
 # 					]) # this is the time delay time stamp, the actual time at which pulse starts is defind later
 np.random.shuffle(t)
-f = 10 #kHz
+f = 20 #kHz
 amp = 1.8 # Vpp
-vva= 10
+vva= 8
 reps = 15
 
 ###dimer is formed in the middle of the pulsetime
@@ -148,7 +148,7 @@ x0 = 47.2227
 field_cal_df = pd.read_csv(os.path.join(os.getcwd(), 'FieldWiggleCal//field_cal_summary.csv'))
 field_cal_df = field_cal_df[(field_cal_df['wiggle_freq'] == f) & (field_cal_df['wiggle_amp'] == amp)]
 # also get the experimental phase shift results for f0
-results_df = pd.read_csv(os.path.join(os.getcwd(), 'contact_correlations//phaseshift//phase_shift_2025_summary.csv'))
+results_df = pd.read_csv(os.path.join(os.getcwd(),'analysis//phase_shift_2025_summary.csv'))
 # thisis because I annoyingly saved the result as a string of a list and need to split it
 # results_df['Sin Fit of f0'] = results_df['Sin Fit of f0'].apply(lambda x: x[1:-1].split(' '))
 # lst = results_df[(results_df['Modulation Freq (kHz)']==f) & (results_df['Modulation Amp (Vpp)']==amp)]['Sin Fit of f0'].values[0]

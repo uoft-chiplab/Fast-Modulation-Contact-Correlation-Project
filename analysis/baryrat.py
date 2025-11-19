@@ -126,7 +126,7 @@ class BarycentricRational:
         self.values = np.asanyarray(f)
         self.weights = np.asanyarray(w)
         
-    @jit(nopython=True)
+    #@jit(nopython=True)
     def __call__(self, x):
         """Evaluate rational function at all points of `x`."""
         zj,fj,wj = self.nodes, self.values, self.weights

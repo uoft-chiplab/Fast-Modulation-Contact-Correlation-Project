@@ -633,7 +633,7 @@ phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq,
 fig.tight_layout()
 
 if Export == True and fix_width == True: # this complains when fix_width is false,  because there are mismatched num of params now
-	csv_path = os.path.join(analysis_folder, f'phase_shift_2025_summary.csv')
+	csv_path = os.path.join(root_analysis, f'phase_shift_2025_summary.csv')
 	write_header = not os.path.exists(csv_path)
 	run_id = run
 

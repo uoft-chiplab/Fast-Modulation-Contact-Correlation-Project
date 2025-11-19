@@ -10,7 +10,7 @@ import os
 # Fast-Modulation-Contact-Correlation-Project\contact_correlations
 cc_folder = os.path.dirname(os.getcwd())
 # Fast-Modulation-Contact-Correlation-Project\
-root_folder = os.path.dirname(cc_folder)
+root_folder = os.getcwd()
 # Fast-Modulation-Contact-Correlation-Project\analysis (contains metadata)
 analysis_folder = os.path.join(root_folder, r"analysis")
 # GitHub folder
@@ -20,12 +20,18 @@ library_folder = os.path.join(github_folder, r"analysis")
 # Fast-Modulation-Contact-Correlation-Project\contact_correlations\phaseshift
 ps_folder = os.path.join(root_folder, r"contact_correlations\phaseshift")
 
+from preamble import *
+
 # Fast-Modulation-Contact-Correlation-Project\FieldWiggleCal
-field_cal_folder = os.path.join(root_folder, r"FieldWiggleCal")
+field_cal_folder = os.path.join(root_analysis, r"FieldWiggleCal")
 
 import sys
 if library_folder not in sys.path:
 	sys.path.append(library_folder)
+if analysis_folder not in sys.path:
+	sys.path.append(analysis_folder)
+if cc_folder not in sys.path:
+	sys.path.append(cc_folder)
 from library import styles, colors, a97, mK, hbar
 from constants import kB, h, hbar, pi
 from unitary_fermi_gas import TrappedUnitaryGas
@@ -40,10 +46,10 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 
 #2025 data comes from phase_shift.py
-data = pd.read_csv(ps_folder + '\\phase_shift_2025_summary.csv')
+data = pd.read_csv(root_project + '\\phase_shift_2025_summary.csv')
 if 'Unnamed: 0' in data.columns:
 	data.rename(columns={'Unnamed: 0':'run'}, inplace=True)
-metadata = pd.read_csv(analysis_folder + '\\metadata.csv')
+metadata = pd.read_csv(root_project + '\\metadata.csv')
 # later plotting gets easier if I merge the summary df and the metadat df
 data= data.merge(metadata, on='run')
 data['T'] = data['ToTF'] * (data['EF']/h) # T in Hz
@@ -300,7 +306,7 @@ for b, TUG in enumerate(TUGs):
 # comparing AC to DC contact. This code is very ugly because of different data processing over time.
 # get DC dimer amplitudes (currently only valid for ToTF=0.3)
 ####to do choose btw dimer or HFT and what temp 
-DCdf = pd.read_csv(os.path.join(root_folder, 'exploratory_and_misc/DC_contact.csv'))
+DCdf = pd.read_csv(os.path.join(root_analysis, 'exploratory_and_misc/DC_contact.csv'))
 # DCdf['HFT_or_dimer'] = 'dimer'
 DCdf['alpha'] = DCdf['popts'].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
 DCdf.sort_values(by='Bfield')
@@ -337,7 +343,7 @@ Cs_d = field_to_contact_dimer(Bs_d)
 As_d = field_to_alpha_dimer(Bs_d)
 
 # DC HFT contact susceptibility from early November runs (ToTF <~ 0.3)
-sus_df = pd.read_csv(os.path.join(root_folder, 'corrections//saturation_HFT.csv'))
+sus_df = pd.read_csv(os.path.join(root_analysis, 'corrections//saturation_HFT.csv'))
 sus_df['HFT_or_dimer']='HFT'
 popt, pcov = curve_fit(Linear, sus_df['Bfield'], sus_df['C'], sigma=sus_df['e_C'])
 popt_fudged, pcov_fudged = curve_fit(Linear, sus_df['Bfield'], sus_df['fudgedC'], sigma=sus_df['e_fudgedC'])
@@ -355,7 +361,7 @@ ax.plot(Bs_HFT, Cs_HFT_unfudged, ls= '--', marker='', color='orange', label='HFT
 ax.set(xlabel = 'Bfield [G]', ylabel = r'$\widetilde{C}$', title = r'DC C, $T/T_F \lesssim 0.3$')
 ax.legend()
 # dirty implementation for hot HFT sus, TODO clean up, want to comebine all temps
-sus_df_hot = pd.read_csv(os.path.join(root_folder, 'corrections//saturation_HFT_hot.csv'))
+sus_df_hot = pd.read_csv(os.path.join(root_analysis, 'corrections//saturation_HFT_hot.csv'))
 sus_df_hot['HFT_or_dimer']='HFT'
 popt, pcov = curve_fit(Linear, sus_df_hot['Bfield'], sus_df_hot['C'], sigma=sus_df_hot['e_C'])
 popt_fudged_hot, pcov_fudged_hot = curve_fit(Linear, sus_df_hot['Bfield'], sus_df_hot['fudgedC'], sigma=sus_df_hot['e_fudgedC'])
@@ -464,7 +470,7 @@ for label in ax[2].get_xticklabels():
 fig.tight_layout()
 
 x_data = data['T']	
-y_data = np.sqrt((1/data['contact_rel_amp']) - 1)/(data['Modulation Freq (kHz)'])	
+y_data = np.sqrt((1/data['contact_rel_amp']) - 1)/(data['Modulation Freq (kHz)']*2*np.pi)	
 for x, y,color, marker in zip(x_data, y_data, colors_data, markers_data):	
 	ax_tau[1].plot(x, y, color=color, marker=marker, mec=darken(color))
 	ax_tau[1].set(
@@ -509,6 +515,20 @@ dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_am
 
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
 	ax[0].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+# Loop over TUGs to plot theory curves
+ToTFs = np.linspace(0.2, 0.6, 5)
+EF = 10000
+ytugs=[]
+for TTF in ToTFs:
+	ytugs.append(TrappedUnitaryGas( TTF, EF, barnu))
+
+Ctrap_list = [y.Ctrap for y in ytugs]
+scale_sus_list = [y.dCdkFa_inv for y in ytugs]
+
+linestyle = '--'
+marker ='o'
+# label = f'ToTF={TUG.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
+ax[0].plot(ToTFs, Ctrap_list, marker='', ls=linestyle)
 
 ax[0].set(
 	xlabel=r'$T/T_F$',
@@ -521,7 +541,10 @@ for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['ToTF'], dC_kFda
 	if label:
 		seen_markers.add(marker)
 	ax[1].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='', label=label)
-
+linestyle = '--'
+marker ='o'
+# label = f'ToTF={TUG.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
+ax[1].plot(ToTFs, scale_sus_list, marker='', ls=linestyle)
 
 ax[1].legend()
 ax[1].set(
