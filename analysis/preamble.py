@@ -33,7 +33,7 @@ root_project = os.path.dirname(this_file)  # directory where get_metadata.py liv
 root_analysis = os.path.dirname(root_project)
 root = os.path.dirname(root_analysis)
 
-analysis_folder = os.path.join(root_analysis, r"contact_correlations\phaseshift")
+analysis_folder = os.path.join(root_analysis, os.path.join("contact_correlations", "phaseshift"))
 root_data = os.path.join(os.path.dirname(root), "Data")
 
 # Fast-Modulation-Contact-Correlation-Project\FieldWiggleCal
