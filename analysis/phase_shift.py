@@ -16,7 +16,6 @@ TO DO:
 # settings for directories, standard packages...
 from preamble import *
 from get_metadata import metadata
-from contact_correlations.UFG_analysis import calc_contact
 
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]

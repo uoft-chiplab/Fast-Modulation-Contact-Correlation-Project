@@ -26,8 +26,9 @@ field_cal_folder = os.path.join(root_folder, r"FieldWiggleCal")
 import sys
 if library_folder not in sys.path:
 	sys.path.append(library_folder)
-from library import styles, colors, kB, h
-from contact_correlations.UFG_analysis import BulkViscTrap
+from library import styles, colors
+from constants import kB, h, hbar, pi
+from unitary_fermi_gas import TrappedUnitaryGas
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm 
@@ -47,7 +48,7 @@ metadata = pd.read_csv(analysis_folder + '\\metadata.csv')
 data= data.merge(metadata, on='run')
 data['T'] = data['ToTF'] * (data['EF']/h) # T in Hz
 # pickle
-pickle_file = cc_folder + '\\time_delay_BVTs_working.pkl'
+pickle_file = cc_folder + '\\time_delay_TUGs_working.pkl'
 load = False
 
 # parameters for theory lines
@@ -94,45 +95,46 @@ def contact_time_delay(phi, period):
 		period and the phase shift.
 		phi /  (omega) = phi/(2*pi) * period
 	"""
-	return phi/(2*np.pi) * period
+	return phi/(2*pi) * period
 
 def Linear(x, m, b):
 	return m*x + b
 
 # load pickle
-BVT_T_list = []
-BVT_tau_list = []
+TUG_T_list = []
+TUG_tau_list = []
 
 if load == True:
 	with open(pickle_file, 'rb') as f:
-		BVTs = pickle.load(f)
+		TUGs = pickle.load(f)
 	analysis = False
 
 else: 
-	# compute BVT and save to pickle
-	BVTs = []
+	# compute TUG and save to pickle
+	TUGs = []
 	analysis = True
 
-	### generate BVT theory values for given ToTFs, EFs
+	### generate TUG theory values for given ToTFs, EFs
 	for i, ToTF in enumerate(ToTFs):
 		EF = EFs[i]
 
 		T = ToTF*EF
 		nus = T*np.logspace(-2, 1, num)
 		# compute trap averaged quantities using Tilman's code
-		BVT = BulkViscTrap(ToTF, EF, barnu, nus)
-		BVT.tau_noz =  ((1.739) * BVT.T) * (2*np.pi)
-		BVT.phiLR_noz = np.arctan(2*np.pi*BVT.nus * 1/ BVT.tau_noz)
+		TUG = TrappedUnitaryGas(ToTF, EF, barnu)
+		TUG.modulate_field(nus)
+		TUG.tau_noz =  ((1.739) * TUG.T) * (2*pi)
+		TUG.phiLR_noz = np.arctan(2*pi*TUG.nus * 1/ TUG.tau_noz)
 		# compute time delays
-		BVT.time_delay = contact_time_delay(BVT.phaseshiftsQcrit, 1/BVT.nus)
-		BVT.time_delay_LR = contact_time_delay(BVT.phiLR, 1/BVT.nus)
-		BVT.rel_amp = 1/(np.sqrt(1+(2*np.pi*BVT.nus*BVT.tau)**2))
-		BVT_T_list.append(BVT.T)
-		BVT_tau_list.append(BVT.tau *1e6) # [us]
-		BVTs.append(BVT)
+		TUG.time_delay = contact_time_delay(TUG.phaseshiftsQcrit, 1/TUG.nus)
+		TUG.time_delay_LR = contact_time_delay(TUG.phiLR, 1/TUG.nus)
+		TUG.rel_amp = 1/(np.sqrt(1+(2*pi*TUG.nus*TUG.tau)**2))
+		TUG_T_list.append(TUG.T)
+		TUG_tau_list.append(TUG.tau *1e6) # [us]
+		TUGs.append(TUG)
 
 	with open(pickle_file, 'wb') as f:
-		pickle.dump(BVTs, f)
+		pickle.dump(TUGs, f)
 
 ### PLOTTING ###
 # figure for phase shift and related tau
@@ -145,13 +147,13 @@ ax.set(xlabel = r"$h\nu/k_BT$",
 	#    ylabel = rf'$\phi = \arctan(\omega \tau)$ [rad]',
 	ylabel = rf'$\phi$ [rad]',
 	   xscale='log')
-# Loop over BVTs to plot theory curves
-for j, BVT in enumerate(BVTs):
-	x_theory = BVT.nus / BVT.T
-	y_theory = BVT.phiLR
-	EF_kHz = (BVT.T / BVT.ToTF) / 1e3
-	label = f'ToTF={BVT.T:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, ls=':', marker='', color=get_color(BVT.T), label=label)
+# Loop over TUGs to plot theory curves
+for j, TUG in enumerate(TUGs):
+	x_theory = TUG.nus / TUG.T
+	y_theory = TUG.phiLR
+	EF_kHz = (TUG.T / TUG.ToTF) / 1e3
+	label = f'ToTF={TUG.T:.2f}, EF={EF_kHz:.0f} kHz'
+	ax.plot(x_theory, y_theory, ls=':', marker='', color=get_color(TUG.T), label=label)
 
 # Plot data
 x_data = (data['Modulation Freq (kHz)']*1000)/data['T']
@@ -173,8 +175,8 @@ ax.set(xlabel = f"T [Hz]",
 		ylabel = rf'$\tau = \tan(\phi)/\omega$ [us]'
 		)
 # theory curves
-x_theory = BVT_T_list
-y_theory = BVT_tau_list
+x_theory = TUG_T_list
+y_theory = TUG_tau_list
 linestyle = ':'
 marker='.'
 ax.plot(x_theory, y_theory, ls=linestyle, marker=marker, color='black', label=label)
@@ -194,17 +196,17 @@ for x, y, ey,color, marker in zip(x_data, y_tau, y_tau_err, colors_data, markers
 ax=axs[2]
 ax.set(xlabel = r"$h\nu/k_BT$",	
 	ylabel = rf'$\tau_\mathrm{{lag}}=\phi/\omega$ [us]')
-# Loop over BVTs to plot theory curves
-for j, BVT in enumerate(BVTs):
-	x_theory = BVT.nus/BVT.T # dimless
-	y_theory = BVT.time_delay_LR * 1e6 # us
+# Loop over TUGs to plot theory curves
+for j, TUG in enumerate(TUGs):
+	x_theory = TUG.nus/TUG.T # dimless
+	y_theory = TUG.time_delay_LR * 1e6 # us
 	linestyle = ':'
 	marker =''
-	label = f'ToTF={BVT.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, color=get_color(BVT.T), marker=marker, ls=linestyle)
-	if j ==0 or j==(len(BVTs)-1):
-		ax.hlines(y=BVT.tau * 1e6, xmin=min(x_theory), xmax=max(x_theory), 
-			ls='--',color=get_color(BVT.T), label=rf'$\tau = {BVT.tau*1e6:.0f} us, T/T_F = {BVT.ToTF:.2f}$')
+	label = f'ToTF={TUG.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
+	ax.plot(x_theory, y_theory, color=get_color(TUG.T), marker=marker, ls=linestyle)
+	if j ==0 or j==(len(TUGs)-1):
+		ax.hlines(y=TUG.tau * 1e6, xmin=min(x_theory), xmax=max(x_theory), 
+			ls='--',color=get_color(TUG.T), label=rf'$\tau = {TUG.tau*1e6:.0f} us, T/T_F = {TUG.ToTF:.2f}$')
 ax.legend()
 # plot data
 x_data = (data['freq']*1000)/data['T'] # dimless
@@ -219,14 +221,14 @@ for x, y, ey,color, marker in zip(x_data, y_taulag, y_taulag_err, colors_data, m
 ax=axs[3]
 ax.set(xlabel = r"$h\nu/k_BT$",
 		ylabel = rf'$\tau_\mathrm{{lag}}/\tau$')
-# Loop over BVTs to plot theory curves
-for j, BVT in enumerate(BVTs):
-	x_theory = BVT.nus/BVT.T
-	y_theory = BVT.time_delay_LR / BVT.tau
+# Loop over TUGs to plot theory curves
+for j, TUG in enumerate(TUGs):
+	x_theory = TUG.nus/TUG.T
+	y_theory = TUG.time_delay_LR / TUG.tau
 	linestyle = ':'
 	marker =''
-	label = f'ToTF={BVT.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
-	ax.plot(x_theory, y_theory, color=get_color(BVT.T), marker=marker, ls=linestyle)
+	label = f'ToTF={TUG.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
+	ax.plot(x_theory, y_theory, color=get_color(TUG.T), marker=marker, ls=linestyle)
 
 # plot data
 y_scaledtau = y_taulag/y_tau
@@ -287,12 +289,12 @@ axs[0].legend()
 ax_tau = axs
 
 
-for b, BVT in enumerate(BVTs):
-	axs[2].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.T),
-		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
+for b, TUG in enumerate(TUGs):
+	axs[2].plot(TUG.nus/TUG.T, TUG.rel_amp,':', color=get_color(TUG.T),
+		 label = f'ToTF={TUG.ToTF}, EF={(TUG.T/TUG.ToTF)/10e2:.0f} kHz'
 		  )
-	axs[3].plot(BVT.nus/BVT.T, BVT.rel_amp,':', color=get_color(BVT.T),
-		 label = f'ToTF={BVT.ToTF}, EF={(BVT.T/BVT.ToTF)/10e2:.0f} kHz'
+	axs[3].plot(TUG.nus/TUG.T, TUG.rel_amp,':', color=get_color(TUG.T),
+		 label = f'ToTF={TUG.ToTF}, EF={(TUG.T/TUG.ToTF)/10e2:.0f} kHz'
 		  )
 
 # comparing AC to DC contact. This code is very ugly because of different data processing over time.
