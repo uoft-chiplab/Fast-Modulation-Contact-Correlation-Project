@@ -46,15 +46,15 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 
 #2025 data comes from phase_shift.py
-data = pd.read_csv(root_project + '\\phase_shift_2025_summary.csv')
+data = pd.read_csv(root_project + os.sep+'phase_shift_2025_summary.csv')
 if 'Unnamed: 0' in data.columns:
 	data.rename(columns={'Unnamed: 0':'run'}, inplace=True)
-metadata = pd.read_csv(root_project + '\\metadata.csv')
+metadata = pd.read_csv(root_project + os.sep + 'metadata.csv')
 # later plotting gets easier if I merge the summary df and the metadat df
 data= data.merge(metadata, on='run')
 data['T'] = data['ToTF'] * (data['EF']/h) # T in Hz
 # pickle
-pickle_file = cc_folder + '\\time_delay_TUGs_working.pkl'
+pickle_file = cc_folder + os.sep + 'time_delay_TUGs_working.pkl'
 load = False
 
 # parameters for theory lines
@@ -498,9 +498,7 @@ ax.set(
 	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
 )
 
-
-
-# plot C vs T
+# plot C vs T, and scale sus vs. T
 fig, ax = plt.subplots(1, 2, figsize=(8,3))
 kF = np.sqrt(2*mK*data['EF'])/hbar
 Cs = [Cfit[-1] for i, Cfit in enumerate(data['Sin Fit of C'])]
@@ -515,19 +513,26 @@ dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_am
 
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
 	ax[0].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+
+# plot C from some recent DC measurements
+# these are from HFT measurements
+HFT_meas = pd.concat([sus_df[sus_df['Bfield']==202.14][['Bfield', 'ToTF','fudgedC','e_fudgedC']],
+					sus_df_hot[sus_df_hot['Bfield'] == 202.14][['Bfield','ToTF','fudgedC','e_fudgedC']] ]
+					)
+ax[0].errorbar(HFT_meas['ToTF'], HFT_meas['fudgedC'], HFT_meas['e_fudgedC'], 
+			   mec='black',marker='*', markersize=10,
+			   label='HFT DC')
+
 # Loop over TUGs to plot theory curves
 ToTFs = np.linspace(0.2, 0.6, 5)
 EF = 10000
-ytugs=[]
-for TTF in ToTFs:
-	ytugs.append(TrappedUnitaryGas( TTF, EF, barnu))
-
+ytugs=[TrappedUnitaryGas(x, EF, barnu) for x in ToTFs]
 Ctrap_list = [y.Ctrap for y in ytugs]
 scale_sus_list = [y.dCdkFa_inv for y in ytugs]
 
 linestyle = '--'
 marker ='o'
-# label = f'ToTF={TUG.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
+label = r'$\langle \widetilde{C}_\mathrm{AC} \rangle_\mathrm{trap}$'
 ax[0].plot(ToTFs, Ctrap_list, marker='', ls=linestyle)
 
 ax[0].set(
@@ -543,7 +548,7 @@ for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['ToTF'], dC_kFda
 	ax[1].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='', label=label)
 linestyle = '--'
 marker ='o'
-# label = f'ToTF={TUG.ToTF:.2f}, EF={EF_kHz:.0f} kHz'
+label = r'$\langle S \rangle_\mathrm{trap}$'
 ax[1].plot(ToTFs, scale_sus_list, marker='', ls=linestyle)
 
 ax[1].legend()
