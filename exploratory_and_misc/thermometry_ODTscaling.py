@@ -14,12 +14,11 @@ def exponential(x, A, x0, C):
 	return A*np.exp(-x/x0) + C
 
 # runs = ['2025-10-23_G','2025-10-23_H','2025-10-23_I','2025-10-23_J', '2025-10-23_K']
-runs = ['2025-11-21_F']
+runs = ['2025-11-21_H']
 # ODTscaling = [0.5, 0.8, 1, 1.5, 2.25]
-ODTscaling = [2]
 plot_params = ['N','T', 'EFkHz', 'ToTF', 'TF','peak_OD'] 
 normalODT1 = 0.2 #V
-xparam='ramp time'
+xparam='odtscale'
 xlabel=xparam
 fig, axs= plt.subplots(3,2, sharex=True)
 axs = axs.flatten()
@@ -27,27 +26,20 @@ for i, param in enumerate(plot_params):
 	axs[i].set(ylabel=param)
 	if i > len(plot_params)-3:
 		axs[i].set(xlabel=xlabel)
-for run, ODTscale in zip(runs, ODTscaling):
+for run in runs:
 	# find data files
 	y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 	runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 	datfiles = glob(f"{runpath}*.dat")
 	runname = datfiles[0].split("\\")[-2].lower() # get run folder name, should be same for all files
 	print(f'Run name = {runname}')
-	run_df = pd.read_csv(datfiles[0])
-	run_df['ODTscale'] = ODTscale
-
+	run = Data(run, path = datfiles[0])
+	run.group_by_mean('odtscale')
+	run_df = run.avg_data
 	for i, param in enumerate(plot_params):
-		axs[i].plot(run_df[xparam], run_df[param], 
-				#   run_df[param].std(), 
+		axs[i].errorbar(run_df[xparam], run_df[param], 
+				   run_df['em_' + param], 
 				  ls='', marker='o', color='hotpink')
-		if param == 'N' and (run == '2025-11-21_G' or run == '2025-11-21_F'):
-			popt, pcov = curve_fit(exponential, run_df[xparam], run_df[param], p0=[5000, 20, 10000])
-			perr = np.sqrt(np.diag(pcov))
-			xs = np.linspace(run_df[xparam].min(), run_df[xparam].max(), 100)
-			ys = exponential(xs, *popt)
-			axs[i].plot(xs, ys, ls='--', marker = '')
-			print(f"N exp fit popt = {popt}")
-			print(f"N fit eval at t=0 is {exponential(0, *popt)}")
-# fig.suptitle('comp. final ODT setpoints after evap')
+		
+
 fig.tight_layout()
