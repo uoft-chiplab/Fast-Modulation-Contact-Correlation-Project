@@ -29,7 +29,7 @@ from scipy.optimize import curve_fit
 run = "2025-11-19_C" 
 wiggle_freq = 20# kHz
 wiggle_amp = 1.8 # Vpp
-pulsetime = 10 # us
+pulsetime = 0.01 # ms
 note = ''
 
 # paramete
@@ -269,6 +269,7 @@ updated_df = pd.concat([summ_df, new_rows], ignore_index=True)
 # Save to CSV
 if EXPORT:
 	updated_df.to_csv(summ_path, index=False)
+	print("Exported.")
 
 ax.set(title=run[0:10]+ ' ' + str(wiggle_freq) + " kHz, " + str(wiggle_amp) + " Vpp field wiggle cal")
 ax.set(xlabel='Time [us]', ylabel='Field [G]')

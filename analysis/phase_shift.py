@@ -20,10 +20,10 @@ from get_metadata import metadata
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-18_J"
+run = "2025-11-20_F"
 #CONTROLS
-SHOW_INTERMEDIATE_PLOTS= True
-Export =True
+SHOW_INTERMEDIATE_PLOTS = True
+Export = True
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
@@ -31,10 +31,11 @@ plot_bg = True # whether or not to plot background points and fit
 single_shot = True
 track_bg = False
 rerun = False
+hijack_freq = True  # Sets HFT detuning to 150kHz no matter what data.freq says.
 
 #CORRECTIONS
 CORR_PULSECONV = True
-CORR_SAT =True
+CORR_SAT = True
 CORR_CFUDGE = False
 sat_scale_df = pd.read_csv(os.path.join(root_analysis, "corrections//saturation_HFT.csv"))
 
@@ -58,7 +59,7 @@ if meta_df.empty:
 # read HFT vs dimer settings
 is_HFT = meta_df["is_HFT"].values[0] #else "dimer"
 pulse_type =  meta_df["pulse_type"]
-pulse_area_corr = np.sqrt(0.31) if (pulse_type.values[0] == "blackman") else 1
+pulse_area_corr = np.sqrt(0.305) if (pulse_type.values[0] == "blackman") else 1
 
 # put this into metadata?
 xlabel = 'Times [ms]'
@@ -71,7 +72,7 @@ VVA = meta_df['VVA'].values[0] # assumes just the max VVA for everything
 ToTF = meta_df['ToTF'].values[0] 
 EF = meta_df['EF'].values[0]/h # Hz
 # Load CCC data for f0 to B conversion
-CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', 'f0'], delimiter='\s')
+CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', 'f0'], delimiter=r'\s+')
 
 # load wiggle field calibration
 field_cal_run = meta_df['field_cal_run'].values[0]
@@ -303,14 +304,17 @@ for i, fpath in enumerate(datfiles):
 		print(f'dropping time at {data.data[time_column_name][0]}')
 		continue
 
-	# adjust time to be at centre of pulse
-	middle_pulse_time = data.data[time_column_name][0] + (pulse_time/1000)/2 # ms, should be same for all cycles
-	title = f'Mid Pulse Time: {middle_pulse_time:0.2f} ms'
-	width = 1/pulse_time if fix_width else None
-	data.data['EF']=EF # Hz
-	data.data['trf']=pulse_time / 1e6 # s
-
 	if is_HFT:
+		# adjust time to be at centre of pulse
+		middle_pulse_time = data.data[time_column_name][0] + (pulse_time/1000)/2 + 0.001 # ms, should be same for all cycles
+		title = f'Mid Pulse Time: {middle_pulse_time:0.2f} ms'
+		width = 1/pulse_time if fix_width else None
+		data.data['EF'] = EF # Hz
+		data.data['trf'] = pulse_time / 1e6 # s
+
+		if hijack_freq == True:
+			data.data['freq'] = 47.2227 + 0.150
+
 		data.analysis(pulse_type=pulse_type.values[0])
 		if CORR_PULSECONV:
 			corr_pulseconv = 1/1.12 # TODO: EXTRACT FROM ACTUAL SIMULATION DATA
@@ -340,20 +344,42 @@ for i, fpath in enumerate(datfiles):
 			thisB = sine(middle_pulse_time, wiggle_freq*2*np.pi, *field_params) # omega in kHz
 			corr_interp = interp1d(cfudge_df['Bfield'], cfudge_df['C_corrfactor'], fill_value="extrapolate")
 			corr_cfudge = corr_interp(thisB)
-			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_cfudge
+			data.data['corr_cfudge'] = corr_cfudge
+			data.data.loc[:, ['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] = \
+				(data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']].multiply(\
+					data.data['corr_cfudge'], axis=0)) # the explicitness here avoids in-place broadcasting errors
+		
 			data.data['CORR_CFUDGE'] = True
 			print(f'Applied C(TTF) fudge correction of {corr_cfudge:.2f} at B={thisB:.2f}G')
 
+		if i == 6: test = data
+		if filename == '2025-11-20_C_e_Wiggle Time=0.09.dat':
+			data.data = data.data.iloc[:-1]
+		if filename == '2025-11-20_C_e_Wiggle Time=0.13.dat':
+			data.data = data.data.iloc[:-1]
+		if filename == '2025-11-20_C_e_Wiggle Time=0.17.dat':
+			data.data = data.data.iloc[:-1]
 		data.group_by_mean('freq')
 		data_avg = data.avg_data
 		# df_list.append(data.avg_data)
-
+		# if data_avg.empty: continue
 		df.loc[middle_pulse_time, ["A", "x0", "eA", 'C', 'eC']] = data_avg[["alpha_HFT", "freq", "em_alpha_HFT", 'contact_HFT', 'em_contact_HFT']].values
 		df.loc[middle_pulse_time,  "ex0"] = 0
 		df.loc[middle_pulse_time, 'B'] = data_avg["field"].values
 		df.loc[middle_pulse_time, 'eB'] = 0 # TODO
+		df.loc[middle_pulse_time, ['c9_var', 'c5_var']] = [np.var(data.data['c9']), np.var(data.data['c5'])]
+		df.loc[middle_pulse_time, ['c9bg_var', 'c5bg_var']] = data_avg[[ "c9bg_var", 'c5bg_var']].values
+		df.loc[middle_pulse_time, 'number shots'] = len(data.data['c9'])
+
+
 		
 	else:
+		# adjust time to be at centre of pulse
+		middle_pulse_time = data.data[time_column_name][0] + (pulse_time/1000)/2  # ms, should be same for all cycles
+		title = f'Mid Pulse Time: {middle_pulse_time:0.2f} ms'
+		width = 1/pulse_time if fix_width else None
+		data.data['EF']=EF # Hz
+		data.data['trf']=pulse_time / 1e6 # s
 		data.data['OmegaR'] = phaseO_OmegaR(VVA, data.data['freq'])
 
 		if not single_shot:
@@ -407,6 +433,30 @@ for i, fpath in enumerate(datfiles):
 		
 		else:
 			dropped_list.append(middle_pulse_time)
+
+cmap = plt.colormaps.get_cmap('viridis')
+colours = cmap(np.linspace(0, 1, len(df.index)))
+if is_HFT:
+
+	fig, ax = plt.subplots(1, 2, figsize=(8,3.5))
+	for i, j in enumerate(df.index):
+		row = df.loc[j]
+		ax[0].plot(row['number shots'],row['c9bg_var']/row['c9_var'],
+			 color=colours[i],
+			 label = f'{np.round(j, 3)}'
+			 )
+		ax[1].plot(row['number shots'],row['c5bg_var']/row['c5_var'], color=colours[i])
+	ax[0].legend(loc='upper left')
+	
+	ax[0].set(
+		ylabel = 'var(c9bg)/var(c9)',
+		xlabel = 'number shots'
+	)
+	ax[1].set(
+		ylabel = 'var(c5bg)/var(c5)',
+		xlabel = 'number shots'
+	)
+	fig.tight_layout()
 
 ###plot all the dimer fits on one multi grid plot
 if (not is_HFT) and SHOW_INTERMEDIATE_PLOTS and valid_results:
@@ -484,7 +534,8 @@ axrs = [fig.add_subplot(gs[i][1], sharex = ax) for i, ax in enumerate(axs)]
 [ax.tick_params(labelbottom=False) for ax in axs]
 ax0, ax1, ax2 = axs # for easier calling
 
-def plot_and_fit_sine(df, attr, freq, ax, ax_resid, ylabel, param_labels=None, **kwargs):
+def plot_and_fit_sine(df, attr, freq, ax, ax_resid, ylabel, param_labels=None, 
+					  legend_loc=0, **kwargs):
 	"""
 	given attr in df, plots residuals fit to f with params popts.
 	"""
@@ -518,7 +569,7 @@ def plot_and_fit_sine(df, attr, freq, ax, ax_resid, ylabel, param_labels=None, *
 	# formatting
 	ax.tick_params(labelbottom = False)
 	ax_resid.set_xlabel("time (ms)")
-	ax.legend(loc=0)
+	ax.legend(loc=legend_loc)
 	ax.ticklabel_format(useOffset=False, style='plain')
 
 	return popts, perrs, plabel, sine_fit
@@ -617,7 +668,7 @@ ax_B.invert_yaxis() # flip y axis instead of phase shifting
 poptsC, perrsC, plabelC, sine_C = plot_and_fit_sine(df, "C", wiggle_freq, ax, resid, ylabel=r"$C/Nk_F$", 
 				  param_labels=[r"$C_\mathrm{amp}$", r"$\phi$", r"$C_\mathrm{eq}$"], marker='o', 
 				  color='mediumvioletred')
-poptsB, perrsB, plabelB, __ = plot_and_fit_sine(df, "B", wiggle_freq, ax_B, resid, ylabel="B [G]", 
+poptsB, perrsB, plabelB, __ = plot_and_fit_sine(df, "B", wiggle_freq, ax_B, resid, legend_loc=1, ylabel="B [G]", 
 				  param_labels=[r"$B_\mathrm{amp}$", r"$\phi$", r"$B_0$"], marker='s', 
  				  color='cornflowerblue', markerfacecolor='white')
 
@@ -633,7 +684,8 @@ phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq,
 fig.tight_layout()
 
 if Export == True and fix_width == True: # this complains when fix_width is false,  because there are mismatched num of params now
-	csv_path = os.path.join(root_analysis, f'phase_shift_2025_summary.csv')
+	root_analysis2 = os.path.join(root_analysis, 'analysis')
+	csv_path = os.path.join(root_analysis2, f'phase_shift_2025_summary.csv')
 	write_header = not os.path.exists(csv_path)
 	run_id = run
 

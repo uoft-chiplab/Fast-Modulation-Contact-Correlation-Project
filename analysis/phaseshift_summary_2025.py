@@ -93,6 +93,7 @@ def get_marker(value, HFT_or_dimer):
 		marker_map = {
 			6.0: 'd',
 			10.0: 'P',
+			20.0 : 'v'
 		}
 	return marker_map.get(value, 'x') # default to 'x' if not found
 
@@ -500,6 +501,7 @@ ax.set(
 
 # plot C vs T, and scale sus vs. T
 fig, ax = plt.subplots(1, 2, figsize=(8,3))
+# ax = ax.flatten()
 kF = np.sqrt(2*mK*data['EF'])/hbar
 Cs = [Cfit[-1] for i, Cfit in enumerate(data['Sin Fit of C'])]
 Cerrs = [Cfit[-1] for i, Cfit in enumerate(data['Error of Sin Fit of C'])]
@@ -514,6 +516,11 @@ dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_am
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
 	ax[0].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
 
+popts, pcov = curve_fit(lambda x,m,b: Linear(x, m, b), data['ToTF'], Cs)
+xss = np.linspace(0.2 , max(data['ToTF']), 100)
+ax[0].plot(xss, Linear(xss, *popts), ls=linestyle, color='darkgray', marker='')
+
+# ratio = popts[0] / 
 # plot C from some recent DC measurements
 # these are from HFT measurements
 HFT_meas = pd.concat([sus_df[sus_df['Bfield']==202.14][['Bfield', 'ToTF','fudgedC','e_fudgedC']],
@@ -530,14 +537,20 @@ ytugs=[TrappedUnitaryGas(x, EF, barnu) for x in ToTFs]
 Ctrap_list = [y.Ctrap for y in ytugs]
 scale_sus_list = [y.dCdkFa_inv for y in ytugs]
 
+popts_theory, pcov_theory = curve_fit(lambda x,m,b: Linear(x, m, b), ToTFs, Ctrap_list)
+
+ratio = popts[0]/popts_theory[0]
+
+# ax[2].plot()
+
 linestyle = '--'
 marker ='o'
-label = r'$\langle \widetilde{C}_\mathrm{AC} \rangle_\mathrm{trap}$'
-ax[0].plot(ToTFs, Ctrap_list, marker='', ls=linestyle)
-
+label = r'$\langle \widetilde{C}_\mathrm{eq} \rangle_\mathrm{trap}$'
+ax[0].plot(ToTFs, Ctrap_list, marker='', ls=linestyle, color='dimgrey')
+ax[0].plot(ToTFs, [x * ratio for x, in zip(Ctrap_list)], marker='', ls=linestyle, color='dimgrey')
 ax[0].set(
 	xlabel=r'$T/T_F$',
-	ylabel=r'$\langle\widetilde{C}_\mathrm{AC}\rangle$'
+	ylabel=r'$\langle\widetilde{C}_\mathrm{eq}\rangle$'
 )
 
 seen_markers = set()
@@ -549,10 +562,15 @@ for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['ToTF'], dC_kFda
 linestyle = '--'
 marker ='o'
 label = r'$\langle S \rangle_\mathrm{trap}$'
-ax[1].plot(ToTFs, scale_sus_list, marker='', ls=linestyle)
+ax[1].plot(ToTFs, scale_sus_list, marker='', ls=linestyle, color='dimgrey')
 
 ax[1].legend()
 ax[1].set(
 	xlabel=r'$T/T_F$',
 	ylabel=r'$\partial\widetilde{C}_\mathrm{AC}/\partial(k_F a_0)^{-1}$'
 )
+
+###getting ratio of data to theory from $\langle\widetilde{C}_\mathrm{AC}\rangle$ plot above
+
+
+fig.tight_layout()
