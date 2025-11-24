@@ -480,28 +480,29 @@ for x, y,color, marker in zip(x_data, y_data, colors_data, markers_data):
 
 
 # some additional checks
-fig, ax = plt.subplots()
-x_data = data['alpha_AC_amp']
-y_data = data['contact_AC_amp']
-y_err = data['contact_AC_amp_err']
-popt, pcov = curve_fit(lambda x,m: Linear(x, m, b=0), x_data, y_data, sigma=y_err)
-# plot linear fit
-xs = np.linspace(x_data.min(), x_data.max(), 20)
-ax.plot(xs, Linear(xs, *popt, 0), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
+# fig, ax = plt.subplots()
+# x_data = data['alpha_AC_amp']
+# y_data = data['contact_AC_amp']
+# y_err = data['contact_AC_amp_err']
+# popt, pcov = curve_fit(lambda x,m: Linear(x, m, b=0), x_data, y_data, sigma=y_err)
+# # plot linear fit
+# xs = np.linspace(x_data.min(), x_data.max(), 20)
+# ax.plot(xs, Linear(xs, *popt, 0), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
 
-# plot data points
-for x, y, yerr, color, marker in zip(x_data, y_data, y_err, colors_data, markers_data):
-	ax.errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+# # plot data points
+# for x, y, yerr, color, marker in zip(x_data, y_data, y_err, colors_data, markers_data):
+# 	ax.errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
 
-ax.legend()
-ax.set(
-	xlabel=r'Amplitude of $\alpha_\mathrm{AC}$',
-	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
-)
+# ax.legend()
+# ax.set(
+# 	xlabel=r'Amplitude of $\alpha_\mathrm{AC}$',
+# 	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
+# )
 
-# plot C vs T, and scale sus vs. T
-fig, ax = plt.subplots(1, 2, figsize=(8,3))
-# ax = ax.flatten()
+### Thanks Tilman
+### plot C vs T, and scale sus vs. T
+fig, ax = plt.subplots(2, 2, figsize=(8,6))
+ax = ax.flatten()
 kF = np.sqrt(2*mK*data['EF'])/hbar
 Cs = [Cfit[-1] for i, Cfit in enumerate(data['Sin Fit of C'])]
 Cerrs = [Cfit[-1] for i, Cfit in enumerate(data['Error of Sin Fit of C'])]
@@ -516,11 +517,6 @@ dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_am
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
 	ax[0].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
 
-popts, pcov = curve_fit(lambda x,m,b: Linear(x, m, b), data['ToTF'], Cs)
-xss = np.linspace(0.2 , max(data['ToTF']), 100)
-ax[0].plot(xss, Linear(xss, *popts), ls=linestyle, color='darkgray', marker='')
-
-# ratio = popts[0] / 
 # plot C from some recent DC measurements
 # these are from HFT measurements
 HFT_meas = pd.concat([sus_df[sus_df['Bfield']==202.14][['Bfield', 'ToTF','fudgedC','e_fudgedC']],
@@ -537,23 +533,36 @@ ytugs=[TrappedUnitaryGas(x, EF, barnu) for x in ToTFs]
 Ctrap_list = [y.Ctrap for y in ytugs]
 scale_sus_list = [y.dCdkFa_inv for y in ytugs]
 
-popts_theory, pcov_theory = curve_fit(lambda x,m,b: Linear(x, m, b), ToTFs, Ctrap_list)
-
-ratio = popts[0]/popts_theory[0]
-
-# ax[2].plot()
-
-linestyle = '--'
-marker ='o'
+# simple linear fit to data points
+popts, pcov = curve_fit(lambda x,m,b: Linear(x, m, b), data['ToTF'], Cs)
+yss = Linear(data['ToTF'], *popts)
+data['C_exp_fit'] = yss
+# had to sort to make plotting work
+ax[0].plot(data.sort_values(by='ToTF')['ToTF'], data.sort_values(by='ToTF')['C_exp_fit'],
+		    ls='--', color='darkgray', marker='')
+# interpolate theory over ToTF
+Ctheory = interp1d(ToTFs, Ctrap_list, kind='linear', fill_value='extrapolate')
+# interpolate correction ratio as function of ToTF
+ratio = Ctheory(data['ToTF']) / yss
+ratio_totf = interp1d(data['ToTF'], ratio, kind='linear', fill_value='extrapolate')
+data['C_rescaled'] = ratio_totf(data['ToTF']) * Cs 
+data['C_rescaled_err'] = ratio_totf(data['ToTF']) * Cerrs
+data['chi_rescaled'] = ratio_totf(data['ToTF']) * dC_kFda0 
+data['chi_rescaled_err'] = ratio_totf(data['ToTF']) * dCkFda0_err
 label = r'$\langle \widetilde{C}_\mathrm{eq} \rangle_\mathrm{trap}$'
-ax[0].plot(ToTFs, Ctrap_list, marker='', ls=linestyle, color='dimgrey')
-ax[0].plot(ToTFs, [x * ratio for x, in zip(Ctrap_list)], marker='', ls=linestyle, color='dimgrey')
+ax[0].plot(ToTFs, Ctrap_list, marker='', ls='-', color='black', label='Trap avg')
+ax[0].errorbar(data['ToTF'], data['C_rescaled'] ,
+			   yerr=data['C_rescaled_err'],
+				marker='.', color='dimgrey', label='scaled')
 ax[0].set(
 	xlabel=r'$T/T_F$',
 	ylabel=r'$\langle\widetilde{C}_\mathrm{eq}\rangle$'
 )
+ax[0].legend()
 
 seen_markers = set()
+# plot data
+# something's buggy; data['Modulation ...'] seems to be out of order
 for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['ToTF'], dC_kFda0, dCkFda0_err, colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):
 	label = f"{pulse_type} {mod_freq}kHz" if marker not in seen_markers else None
 	if label:
@@ -562,15 +571,56 @@ for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['ToTF'], dC_kFda
 linestyle = '--'
 marker ='o'
 label = r'$\langle S \rangle_\mathrm{trap}$'
+# plot Tilman theory
 ax[1].plot(ToTFs, scale_sus_list, marker='', ls=linestyle, color='dimgrey')
-
+# plot rescaled data
+ax[1].errorbar(data['ToTF'], data['chi_rescaled'],
+		   yerr = data['chi_rescaled_err'],
+			marker='.', color='dimgrey', label='scaled')
 ax[1].legend()
 ax[1].set(
 	xlabel=r'$T/T_F$',
 	ylabel=r'$\partial\widetilde{C}_\mathrm{AC}/\partial(k_F a_0)^{-1}$'
 )
 
-###getting ratio of data to theory from $\langle\widetilde{C}_\mathrm{AC}\rangle$ plot above
+# plots of chi/S
+Stheory = interp1d(ToTFs, scale_sus_list, kind='linear', fill_value='extrapolate')
+data['chi'] = dC_kFda0
+data['chi_err'] = dCkFda0_err
+data['Stheory'] = Stheory(data['ToTF'])
+data['chi/S'] = data['chi']/data['Stheory']
+data['chi/S_err'] = data['chi_err']/data['Stheory'] # TODO estimate uncertainty in theoretical S
+data['chi_rescaled/S'] = data['chi_rescaled'] / data['Stheory']
+data['chi_rescaled/S_err'] = data['chi_rescaled_err']/data['Stheory']
+data['nu/T'] = data['freq']*1000/data['T']
 
+# plot data
+
+# something's buggy; data['Modulation ...'] seems to be out of order
+for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['nu/T'], data['chi/S'], data['chi/S_err'], colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):
+	ax[2].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['nu/T'], data['chi_rescaled/S'], data['chi_rescaled/S_err'], colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):
+	ax[3].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+
+# plot theory
+num=20
+for b, TUG in enumerate(ytugs):
+	nus = TUG.T*np.logspace(-2, 1, num)
+	TUG.modulate_field(nus)
+	TUG.rel_amp = 1/(np.sqrt(1+(2*pi*TUG.nus*TUG.tau)**2))
+	ax[2].plot(TUG.nus/TUG.T, TUG.rel_amp,':', color=get_color(TUG.T),
+		 label = f'ToTF={TUG.ToTF}, EF={(TUG.T/TUG.ToTF)/10e2:.0f} kHz'
+		  )
+	ax[3].plot(TUG.nus/TUG.T, TUG.rel_amp,':', color=get_color(TUG.T),
+		 label = f'ToTF={TUG.ToTF}, EF={(TUG.T/TUG.ToTF)/10e2:.0f} kHz'
+		  )
+ax[2].set(xlim=[0, data['nu/T'].max()+1],
+		  xlabel=r'$h\nu/k_BT$',
+		  ylabel=r'$\chi/S$')
+
+ax[3].set(xlim=[0, data['nu/T'].max()+1],
+		  xlabel=r'$h\nu/k_BT$',
+		  ylabel=r'rescaled $\chi/S$')
+ax[2].legend(fontsize=6)
 
 fig.tight_layout()
