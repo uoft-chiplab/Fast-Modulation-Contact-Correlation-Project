@@ -480,29 +480,28 @@ for x, y,color, marker in zip(x_data, y_data, colors_data, markers_data):
 
 
 # some additional checks
-# fig, ax = plt.subplots()
-# x_data = data['alpha_AC_amp']
-# y_data = data['contact_AC_amp']
-# y_err = data['contact_AC_amp_err']
-# popt, pcov = curve_fit(lambda x,m: Linear(x, m, b=0), x_data, y_data, sigma=y_err)
-# # plot linear fit
-# xs = np.linspace(x_data.min(), x_data.max(), 20)
-# ax.plot(xs, Linear(xs, *popt, 0), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
+fig, ax = plt.subplots()
+x_data = data['alpha_AC_amp']
+y_data = data['contact_AC_amp']
+y_err = data['contact_AC_amp_err']
+popt, pcov = curve_fit(lambda x,m: Linear(x, m, b=0), x_data, y_data, sigma=y_err)
+# plot linear fit
+xs = np.linspace(x_data.min(), x_data.max(), 20)
+ax.plot(xs, Linear(xs, *popt, 0), ls='-', marker='', color='gray', label=f'Linear Fixed: y={popt[0]:.2f}x')
 
-# # plot data points
-# for x, y, yerr, color, marker in zip(x_data, y_data, y_err, colors_data, markers_data):
-# 	ax.errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+# plot data points
+for x, y, yerr, color, marker in zip(x_data, y_data, y_err, colors_data, markers_data):
+	ax.errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
 
-# ax.legend()
-# ax.set(
-# 	xlabel=r'Amplitude of $\alpha_\mathrm{AC}$',
-# 	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
-# )
+ax.legend()
+ax.set(
+	xlabel=r'Amplitude of $\alpha_\mathrm{AC}$',
+	ylabel=r'Amplitude of $\widetilde{C}_\mathrm{AC}$'
+)
 
-### Thanks Tilman
-### plot C vs T, and scale sus vs. T
-fig, ax = plt.subplots(2, 2, figsize=(8,6))
-ax = ax.flatten()
+# plot C vs T, and scale sus vs. T
+fig, ax = plt.subplots(1, 2, figsize=(8,3))
+# ax = ax.flatten()
 kF = np.sqrt(2*mK*data['EF'])/hbar
 Cs = [Cfit[-1] for i, Cfit in enumerate(data['Sin Fit of C'])]
 Cerrs = [Cfit[-1] for i, Cfit in enumerate(data['Error of Sin Fit of C'])]
@@ -517,6 +516,11 @@ dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_am
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
 	ax[0].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
 
+popts, pcov = curve_fit(lambda x,m,b: Linear(x, m, b), data['ToTF'], Cs)
+xss = np.linspace(0.2 , max(data['ToTF']), 100)
+ax[0].plot(xss, Linear(xss, *popts), ls=linestyle, color='darkgray', marker='')
+
+# ratio = popts[0] / 
 # plot C from some recent DC measurements
 # these are from HFT measurements
 HFT_meas = pd.concat([sus_df[sus_df['Bfield']==202.14][['Bfield', 'ToTF','fudgedC','e_fudgedC']],
