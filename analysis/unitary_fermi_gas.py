@@ -9,6 +9,7 @@
 import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
+import matplotlib.pyplot as plt
 
 from constants import pi, mK, hbar
 from baryrat import BarycentricRational
@@ -210,9 +211,28 @@ def number_per_spin(betamu, betabaromega, weight_func=weight_harmonic, v_max=np.
 
 
 def psd_trap(betamu, betabaromega, weight_func=weight_harmonic):
-    """Compute density averaged over the trap."""
+    """Compute N^2/volume/lambda^3 averaged over the trap."""
     psd, psd_traperr = quad(lambda v: weight_func(v,betabaromega)*\
                         (eos_ufg(betamu-v)/2)**2, 0, np.inf, epsrel=1e-4)
+    
+    # Define your range
+    v_range = np.linspace(0, 10, 1000)  # Adjust upper limit as needed
+
+    # Calculate the integrand
+    integrand = [weight_func(v, betabaromega) * (eos_ufg(betamu - v)/2)**2 
+                for v in v_range]
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(v_range, integrand)
+    # plt.plot(psd)
+    plt.xlabel('v = V/T')
+    plt.ylabel('Integrand value')
+    plt.title('Integrand: weight_func(v) × (eos_ufg(βμ-v)/2)²')
+    plt.grid(True)
+    plt.show()
+
+    # The integral is the area under this curve
+    print(f"Integral value: {psd:.6f}")
     return psd
 
 
@@ -329,8 +349,8 @@ class TrappedUnitaryGas:
         self.ToTF = ToTF
         self.barnu = barnu
         self.lambda_T = np.sqrt(hbar/(mK*self.T))  # Thermal wavelength (unit of length, in meters).
-        self.betabaromega = barnu/self.T
-        
+        self.betabaromega = barnu/self.T        
+
         # Find betamutrap that produces correct ToTF given EF, ToTF and betabaromega.
         self.betamu, _ = find_betamu(self.T, ToTF, self.betabaromega)
 
@@ -338,6 +358,8 @@ class TrappedUnitaryGas:
         self.tau = 1/gamma(self.betamu, self.T) / (2 * pi)
         self.Ns, self.EF, self.Theta, self.Epot = thermo_trap(self.T, 
                                                     self.betamu, self.betabaromega)
+        self.psd_trap = psd_trap(self.betamu,self.betabaromega)        
+        self.density = self.psd_trap/self.Ns/self.lambda_T**3
 
         # Self-consistency checks of EF and Theta:
         rtol = 1e-2  # Within 1%
@@ -348,6 +370,7 @@ class TrappedUnitaryGas:
         
         self.kF = np.sqrt(2*mK*(2*pi)*self.EF/hbar)  # Global k_F, i.e. peak k_F
         self.Etotal = 2*self.Epot  # Virial theorem valid at unitarity
+
 
         self.calc_contact()
         self.calc_dC_dkFa_inv()

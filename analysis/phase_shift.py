@@ -20,10 +20,10 @@ from get_metadata import metadata
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-20_F"
+run = "2025-11-19_H"
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS = True
-Export = True
+Export = False
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
@@ -370,9 +370,7 @@ for i, fpath in enumerate(datfiles):
 		df.loc[middle_pulse_time, ['c9_var', 'c5_var']] = [np.var(data.data['c9']), np.var(data.data['c5'])]
 		df.loc[middle_pulse_time, ['c9bg_var', 'c5bg_var']] = data_avg[[ "c9bg_var", 'c5bg_var']].values
 		df.loc[middle_pulse_time, 'number shots'] = len(data.data['c9'])
-
-
-		
+	
 	else:
 		# adjust time to be at centre of pulse
 		middle_pulse_time = data.data[time_column_name][0] + (pulse_time/1000)/2  # ms, should be same for all cycles
@@ -436,27 +434,6 @@ for i, fpath in enumerate(datfiles):
 
 cmap = plt.colormaps.get_cmap('viridis')
 colours = cmap(np.linspace(0, 1, len(df.index)))
-if is_HFT:
-
-	fig, ax = plt.subplots(1, 2, figsize=(8,3.5))
-	for i, j in enumerate(df.index):
-		row = df.loc[j]
-		ax[0].plot(row['number shots'],row['c9bg_var']/row['c9_var'],
-			 color=colours[i],
-			 label = f'{np.round(j, 3)}'
-			 )
-		ax[1].plot(row['number shots'],row['c5bg_var']/row['c5_var'], color=colours[i])
-	ax[0].legend(loc='upper left')
-	
-	ax[0].set(
-		ylabel = 'var(c9bg)/var(c9)',
-		xlabel = 'number shots'
-	)
-	ax[1].set(
-		ylabel = 'var(c5bg)/var(c5)',
-		xlabel = 'number shots'
-	)
-	fig.tight_layout()
 
 ###plot all the dimer fits on one multi grid plot
 if (not is_HFT) and SHOW_INTERMEDIATE_PLOTS and valid_results:
