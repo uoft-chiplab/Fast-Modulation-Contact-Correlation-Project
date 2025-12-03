@@ -14,6 +14,36 @@ scale_list = [0.5,1,1.5]
 EF_list = [np.sqrt(x) * EF for x in scale_list] #EF propto N * barn_nu 
 dict_list = []
 
+    TUGs = TUG(ToTF, EF, bar_nu_var(scale))
+
+        'thermal_debrog': TUGs.lambda_T,
+        'trap_den_x_thermal_debrog**3': TUGs.psd_trap/TUGs.Ns,
+        'Ns': TUGs.Ns,
+        'kF': TUGs.kF,
+        'n_peak': TUGs.kF**3*3*np.pi**2
+
+#creating a dataframe from the dictionary created from the loop above
+df = pd.DataFrame(dict_list)
+#%%
+    ylabel = rf'$\langle n\rangle$'
+)
+ax2 = ax.twinx()
+# ax2.plot(scale_list, df['EF'])
+    ylim = [df['EF'].min(), df['EF'].max()],
+    ylabel = 'EF'
+)
+
+fig.tight_layout()
+# %%
+
+
+ToTF = 0.3
+EF = 12000 #Hz 
+
+scale_list = [0.5,1,1.5]
+EF_list = [np.sqrt(x) * EF for x in scale_list] #EF propto N * barn_nu 
+dict_list = []
+
 for (scale, EF) in zip(scale_list, EF_list):
     TUGs = TUG(ToTF, EF, bar_nu_var(scale))
 
