@@ -20,10 +20,10 @@ from get_metadata import metadata
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-20_F"
+run = "2025-11-20_C"
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS = True
-Export = True
+Export = False
 amp_cutoff = 0.01 # ignore runs with peak transfer below 0.01
 avg_dimer_spec = False # whether or not to average detunings before fitting dimer spectrum
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
