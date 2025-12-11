@@ -249,41 +249,36 @@ def Contact_from_amplitude(A, eA, EF, OmegaR, trf):
 
 	return Id, e_Id, C, e_C
 
-def bg_over_scan(datfiles, plot=False):
-	# mscan = pd.read_csv(glob(f"{runpath}*.mscan")[0], skiprows=2)
-	df0VVA = pd.DataFrame()
-	for fpath in datfiles:
-		run_df = pd.read_csv(fpath)
-		df0VVA = pd.concat([df0VVA, run_df[run_df["VVA"] == 0]])
-	# sort by cycle to match mscan list
-	df0VVA.sort_values("cyc", inplace=True)
-	# fit trend in c5 vs time to line (cyc # as proxy for time)
-	popts, pcov = curve_fit(line, df0VVA.cyc, df0VVA.c5, [3000, -1])
-	perrs = np.sqrt(np.diag(pcov))
-	### plot if you want 
-	if plot:
-		fig, ax = plt.subplots(figsize=(3,2))
-		ax.plot(df0VVA['cyc'], df0VVA['c5'], marker='.')
-		ax.plot(df0VVA['cyc'], line(df0VVA['cyc'], *popts), ls='-', marker='')
+# def bg_over_scan(datfiles, plot=False):
+# 	# mscan = pd.read_csv(glob(f"{runpath}*.mscan")[0], skiprows=2)
+# 	df0VVA = pd.DataFrame()
+# 	for fpath in datfiles:
+# 		run_df = pd.read_csv(fpath)
+# 		df0VVA = pd.concat([df0VVA, run_df[run_df["VVA"] == 0]])
+# 	# sort by cycle to match mscan list
+# 	df0VVA.sort_values("cyc", inplace=True)
+# 	# fit trend in c5 vs time to line (cyc # as proxy for time)
+# 	popts, pcov = curve_fit(line, df0VVA.cyc, df0VVA.c5, [3000, -1])
+# 	perrs = np.sqrt(np.diag(pcov))
+# 	### plot if you want 
+# 	if plot:
+# 		fig, ax = plt.subplots(figsize=(3,2))
+# 		ax.plot(df0VVA['cyc'], df0VVA['c5'], marker='.')
+# 		ax.plot(df0VVA['cyc'], line(df0VVA['cyc'], *popts), ls='-', marker='')
 
-		ax.set(
-			ylabel = 'c5 bg shots',
-			xlabel='cyc'
-		)
+# 		ax.set(
+# 			ylabel = 'c5 bg shots',
+# 			xlabel='cyc'
+# 		)
 	
-	return popts, perrs
+# 	return popts, perrs
 
 # find data files
 y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
 datfiles = glob(f"{runpath}*=*.dat")
 runname = datfiles[0].split(os.sep)[-2].lower() # get run folder name, should be same for all files
-# calculate bg over time; needs to load all the datfiles first
-if track_bg:
-	popts_c5bg, perrs_c5bg = bg_over_scan(datfiles, plot=True)
-else: 
-	popts_c5bg = np.array([])
-	
+
 # set up dataframe to hold dimer fits
 columns = ["A", "x0", "eA", "ex0", 'C', 'eC', 'B', 'eB'] if fix_width else ["A", "x0", "width", "eA", "ex0", "ewidth", 'C', 'eC', 'B', 'eB']
 df = pd.DataFrame( columns =columns,  dtype=float)
@@ -314,8 +309,13 @@ for i, fpath in enumerate(datfiles):
 
 		if hijack_freq == True:
 			data.data['freq'] = 47.2227 + 0.150
-
-		data.analysis(pulse_type=pulse_type.values[0])
+		# calculate bg over time; needs to load all the datfiles first
+		if track_bg:
+			data.analysis(pulse_type=pulse_type.values[0], track_bg=True)
+		else: 
+			data.analysis(pulse_type=pulse_type.values[0])
+			
+		
 		if CORR_PULSECONV:
 			corr_pulseconv = 1/1.12 # TODO: EXTRACT FROM ACTUAL SIMULATION DATA
 			data.data[['alpha_HFT', 'scaledtransfer_HFT', 'contact_HFT']] *= corr_pulseconv

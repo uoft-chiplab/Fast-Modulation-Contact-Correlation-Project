@@ -119,12 +119,12 @@ export =True
 # randomizes order freqs in scan list for each time
 randomize = True
 # single shot scan list vs. multiple detunings
-singleshot=False
+singleshot = False
 # HFT single shot list
 HFT = True
 detuning = 0.150 # MHz
 # times
-pulsetime=0.020
+pulsetime = 0.020
 # this is the time delay time stamp, the actual time at which pulse starts is defind later
 t = np.array([0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18])
 # t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
