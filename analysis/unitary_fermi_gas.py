@@ -222,17 +222,17 @@ def psd_trap(betamu, betabaromega, weight_func=weight_harmonic):
     integrand = [weight_func(v, betabaromega) * (eos_ufg(betamu - v)/2)**2 
                 for v in v_range]
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(v_range, integrand)
-    # plt.plot(psd)
-    plt.xlabel('v = V/T')
-    plt.ylabel('Integrand value')
-    plt.title('Integrand: weight_func(v) × (eos_ufg(βμ-v)/2)²')
-    plt.grid(True)
-    plt.show()
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(v_range, integrand)
+    # # plt.plot(psd)
+    # plt.xlabel('v = V/T')
+    # plt.ylabel('Integrand value')
+    # plt.title('Integrand: weight_func(v) × (eos_ufg(βμ-v)/2)²')
+    # plt.grid(True)
+    # plt.show()
 
     # The integral is the area under this curve
-    print(f"Integral value: {psd:.6f}")
+    # print(f"Integral value: {psd:.6f}")
     return psd
 
 

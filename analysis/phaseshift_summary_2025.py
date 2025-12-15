@@ -61,7 +61,7 @@ load = False
 ToTFs = np.array([metadata['ToTF'].min(), metadata['ToTF'].median(), metadata['ToTF'].max()])
 # EFs = np.array([metadata['EF'].min(), metadata['EF'].median(), metadata['EF'].max()])/h # Hz
 EFs = np.ones(len(ToTFs))*10000 # Hz
-barnu = 377 # THIS IS JUST AN ESTIMATE; NOT VALID FOR LOOSE ODTs
+barnu = 377 # THIS IS JUST AN ESTIMATE; NOT VALID FOR LOOSE ODTs, (geometric mean trap freq - (omegax*omegay*omegaz)**(1/3))
 num = 50
 
 # set color via normalized ToTF
