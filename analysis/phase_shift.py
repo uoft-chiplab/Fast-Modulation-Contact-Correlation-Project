@@ -29,7 +29,7 @@ avg_dimer_spec = False # whether or not to average detunings before fitting dime
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
 single_shot = True
-track_bg = False
+track_bg = True
 rerun = False
 hijack_freq = True  # Sets HFT detuning to 150kHz no matter what data.freq says.
 
@@ -89,7 +89,7 @@ def line(x, m, b):
 def sine(x, omega, A, p, c):
 	return A*np.sin(omega*x-p) + c
 	
-# I want to move this somewhere else. Maybe put it in preamble?
+# I want to move this somewhere else. Maybe put it in preamble, it is in fit fcns
 def saturation_scale(x, x0):
 	""" x is OmegaR^2 and x0 is fit 1/e Omega_R^2 """
 	return x/x0*1/(1-np.exp(-x/x0))
