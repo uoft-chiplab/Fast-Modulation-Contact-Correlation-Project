@@ -170,8 +170,8 @@ for i, run in enumerate(runs):
 		  label=f'{quench_t} us quench, {probe_t} us probe, {T} nK'
 	)
 	ax3[3].plot(
-		alldata['VVA'],
-		alldata['c5'],
+		df['VVA'],
+		df['c5'],
 				  color=colors[i],
 		  label=f'{quench_t} us quench, {probe_t} us probe, {T} nK'
 	)
