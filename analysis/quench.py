@@ -7,6 +7,16 @@ This script analyzes the growth of the contact following an rf quench into unita
 from preamble import *
 from library import colors, kB
 
+def saturation_scale(x, x0):
+	""" x is OmegaR^2t^2 and x0 is fit 1/e Omega_R^2t0^2 where t0 = 10 us """
+	return x/x0*1/(1-np.exp(-x/x0))
+
+# old cals we used for HFT_dimer_bg_analysis.py
+SATURATION= True
+dimer_x0 = 5211 
+e_dimer_x0 = 216
+calibrated_t = 10 # us
+
 using_midpoints = False
 ####plotting timing diagram 
 # Data representing a sequence of bits (0s and 1s)
@@ -37,8 +47,8 @@ plt.text(5, 1.2, 'Probe')
 plt.legend()
 ###5 us quench, 10 us dimer 
 
-runs = pd.DataFrame(
-	{"2025-12-10_J":{"EF":14500, "T":369, "quench time":5, "probe time":10, "ratio":5050},
+runs = pd.DataFrame({
+	"2025-12-10_J":{"EF":14500, "T":369, "quench time":5, "probe time":10, "ratio":5050},
 	 "2025-12-11_E":{"EF":14250, "T":340, "quench time":10, "probe time":10, "ratio":5050},
 	 "2025-12-11_G":{"EF":14250, "T":340, "quench time":5, "probe time":20, "ratio":5050},
 	 "2025-12-11_H": {"EF":14250, "T":340, "quench time":8, "probe time":10, "ratio":5050},
@@ -104,6 +114,15 @@ for i, run in enumerate(runs):
 
 	# alldata = data.analysis(bgVVA = 0,nobg=True, pulse_type="square").data
 	data.analysis(bgVVA = 0, pulse_type="square")
+
+	
+	data.data['sat_scale_dimer'] = saturation_scale(data.data['OmegaR2']/(2*np.pi)**2 / 1e6 * probe_t,
+												 dimer_x0 * calibrated_t)
+	if SATURATION:
+		cols = ['alpha_dimer', 'scaledtransfer_dimer', 'contact_dimer']
+		for col in cols:
+			data.data[col] *= data.data['sat_scale_dimer']
+
 	data.group_by_mean('hold time (us)')
 	df = data.avg_data
 	print(data.data['trf'])
@@ -170,8 +189,8 @@ for i, run in enumerate(runs):
 		  label=f'{quench_t} us quench, {probe_t} us probe, {T} nK'
 	)
 	ax3[3].plot(
-		df['VVA'],
-		df['c5'],
+		df['trf'],
+		df['sat_scale_dimer'],
 				  color=colors[i],
 		  label=f'{quench_t} us quench, {probe_t} us probe, {T} nK'
 	)
