@@ -48,17 +48,23 @@ plt.legend()
 ###5 us quench, 10 us dimer 
 
 runs = pd.DataFrame({
-	"2025-12-10_J":{"EF":14500, "T":369, "quench time":5, "probe time":10, "ratio":5050},
-	 "2025-12-11_E":{"EF":14250, "T":340, "quench time":10, "probe time":10, "ratio":5050},
-	 "2025-12-11_G":{"EF":14250, "T":340, "quench time":5, "probe time":20, "ratio":5050},
-	 "2025-12-11_H": {"EF":14250, "T":340, "quench time":8, "probe time":10, "ratio":5050},
+	# "2025-12-10_J":{"EF":14500, "T":369, "quench time":5, "probe time":10, "ratio":5050},
+	#  "2025-12-11_E":{"EF":14250, "T":340, "quench time":10, "probe time":10, "ratio":5050},
+	#  "2025-12-11_G":{"EF":14250, "T":340, "quench time":5, "probe time":20, "ratio":5050},
+	#  "2025-12-11_H": {"EF":14250, "T":340, "quench time":8, "probe time":10, "ratio":5050},
 	#  "2025-12-12_E": {"EF":14420, "T":377, "quench time":5, "probe time":10},
-	 "2025-12-15_H": {"EF":13940, "T":386, "quench time":5, "probe time":10, "ratio":8515},
-	 "2025-12-15_J": {"EF":13940, "T":386, "quench time":5, "probe time":10, "ratio":7030}
+	#  "2025-12-15_H": {"EF":13940, "T":386, "quench time":5, "probe time":10, "ratio":8515},
+	#  "2025-12-15_J": {"EF":13940, "T":386, "quench time":5, "probe time":10, "ratio":7030},
+	"2025-12-16_A":{"EF": 13930, "T":389, "quench time":5, "probe time":5, "ratio":5050},
+	"2025-12-16_B":{"EF": 13930, "T":389, "quench time":5, "probe time":2.5, "ratio":5050},
+	"2025-12-16_D":{"EF": 13930, "T":389, "quench time":5, "probe time":4, "ratio":5050},
+	"2025-12-16_E":{"EF": 13930/1.3, "T":389/2, "quench time":5, "probe time":4, "ratio":5050}, # DID NOT DO THERMOMETRY
+	"2025-12-17_H":{"EF": 11140, "T":196, "quench time":5, "probe time":2.5, "ratio":5050},
+	"2025-12-17_I":{"EF": 11140, "T":196, "quench time":5, "probe time":5, "ratio":5050},
 
 	 }) # EF in Hz, T in nK
-
-defaults = {'freq':43.24} # default values for freq (MHz), trf (s)
+### THINK ABOUT WHAT IS DEFAULT EVERY TIME ANOTHER DATASET IS ADDED
+defaults = {'freq':43.24, "Vpp":3.9} 
 xlim = [0,200]
 
 fig, ax = plt.subplots(figsize=(4,3))
@@ -74,7 +80,7 @@ ax2[1].set(xlabel='Time after quench (us)',
 	   ylabel=r'$C_d/C_{max}$',
 	#    xlim = xlim
 	   )
-fig3, ax3 = plt.subplots(2,2 , figsize=(10,5))
+fig3, ax3 = plt.subplots(3,2 , figsize=(10,5))
 ax3 = ax3.flatten()
 ax3[0].set(
 	xlabel = 'Time after quench (us)',
@@ -90,9 +96,14 @@ ax3[2].set(
 	ylabel='alpha'
 )
 ax3[3].set(
-	xlabel = 'VVA',
-	ylabel = 'c5'
+	xlabel = 'trf',
+	ylabel = 'sat_scale_dimer'
 )
+ax3[4].set(
+	xlabel = 'trf',
+	ylabel = 'kF'
+)
+
 for i, run in enumerate(runs):
 	# find data files
 	y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
@@ -108,29 +119,38 @@ for i, run in enumerate(runs):
 	data.data['trf'] = probe_t/1e6
 	ToTF = kB*(T*1e-9)/(h*EF)
 	data.data['EF'] = EF
+	
 	for key in defaults.keys():
 		if key not in data.data.keys():
 			data.data[key] = defaults[key]
 
 	# alldata = data.analysis(bgVVA = 0,nobg=True, pulse_type="square").data
-	data.analysis(bgVVA = 0, pulse_type="square")
+	data.analysis(bgVVA = 0, pulse_type="square", rfsource="micrO")
 
 	
-	data.data['sat_scale_dimer'] = saturation_scale(data.data['OmegaR2']/(2*np.pi)**2 / 1e6 * probe_t,
-												 dimer_x0 * calibrated_t)
+	data.data['sat_scale_dimer'] = saturation_scale(data.data['OmegaR2']/(2*np.pi)**2 / 1e6 * probe_t**2,
+												 dimer_x0 * calibrated_t**2)
 	if SATURATION:
 		cols = ['alpha_dimer', 'scaledtransfer_dimer', 'contact_dimer']
 		for col in cols:
 			data.data[col] *= data.data['sat_scale_dimer']
 
+	# if '16_D' in run:
+		# data.data = data.data[data.data['cyc']>100]
+
 	data.group_by_mean('hold time (us)')
 	df = data.avg_data
-	print(data.data['trf'])
+	# print(data.data['trf'])
 
 	if using_midpoints:
 		midpoints = quench_t/2 + probe_t/2 
 		df['hold time (us)'] = df['hold time (us)'] + midpoints
 		print('Adding midpoints to the time')
+
+	if '16_B' in run:
+		df.drop(index = 7, inplace = True) # 50us hold time
+
+
 	
 	df['norm_sig'] = df['scaledtransfer_dimer'] / df['scaledtransfer_dimer'].max()
 	df['em_norm_sig'] = df['em_scaledtransfer_dimer'] / df['scaledtransfer_dimer'].max()
@@ -194,10 +214,18 @@ for i, run in enumerate(runs):
 				  color=colors[i],
 		  label=f'{quench_t} us quench, {probe_t} us probe, {T} nK'
 	)
+	ax3[4].plot(
+		df['trf'],
+		df['kF'],
+				  color=colors[i],
+		  label=f'{quench_t} us quench, {probe_t} us probe, {T} nK'
+	)
+
+
 
 	fig2.tight_layout()
 	fig3.tight_layout()
 	
 ax.legend(loc=0, bbox_to_anchor=(1,-0.25))
 ax2[1].legend(loc=0, bbox_to_anchor=(0.5,-0.25))
-ax3[3].legend(loc=0, bbox_to_anchor=(0.5,-0.25))
+ax3[4].legend(loc=0, bbox_to_anchor=(0.7,-0.65))
