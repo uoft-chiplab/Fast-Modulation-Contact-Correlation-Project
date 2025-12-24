@@ -1,3 +1,5 @@
+###file to make scan list for phase shift measurements 
+
 import os
 import sys
 # Always base paths on this file's location, not the working directory
@@ -14,10 +16,12 @@ import pandas as pd
 import random
 from scipy.interpolate import interp1d
 from library import FreqMHz
-
-
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+###fitting sin to field calibration
+from scipy.optimize import curve_fit
 # settings for directories, standard packages...
-
+def Linear(x, m, b):
+	return m*x + b
 def sinc2(x, A, x0, sigma, C):
 	return np.abs(A)*(np.sinc((x-x0) / sigma)**2) + C
 
@@ -114,6 +118,28 @@ def generate_singleshot_scanlist(f0, VVA, n_peak, n_bg, wings=False, randomize=T
 
 	return scanlist
 
+def field_to_odt(Bval):
+	fields = np.array([202.14      , 202.15265925, 202.1651148 , 202.17716625,
+       202.18861967, 202.19929079, 202.2090079 , 202.21761465,
+       202.22497254, 202.2309632 , 202.23549022, 202.23848078,
+       202.23988673, 202.23968548, 202.23788024, 202.23450008,
+       202.22959938, 202.22325699, 202.21557496, 202.2066769 ,
+       202.19670599, 202.18582265, 202.17420201, 202.16203105,
+       202.1495056 ])
+	odts = np.array([1.0003318773524044, 0.9852500707824112,0.9710777926925142,
+	0.9576756013558121,0.9452119910350403,0.9338321559859135,0.9236591925419738,0.9147956404675881,
+	0.9073251732267774,0.9013142807641008,0.8968138214330148,0.8938603496021237,0.8924771512327716,
+	0.892674941315125,0.8944521950886813,0.8977951005050037,0.9026771337019462,
+	0.9090582737476196,0.9168838889564076,0.9260833459222179,0.9365684150129047,
+	0.9482315729031997,0.9609443335381477,0.9745557724521371,0.9888914430220057])
+	df = pd.DataFrame({'odts': odts, 'Field': fields})
+
+	df_sorted = df.sort_values('odts')
+	
+	interp_func = interp1d(df_sorted['Field'], df_sorted['odts'],  
+                          kind='linear', fill_value='extrapolate')
+	
+	return interp_func(Bval)
 
 export =True
 # randomizes order freqs in scan list for each time
@@ -122,16 +148,21 @@ randomize = True
 singleshot = False
 # HFT single shot list
 HFT = True
+#if we want to oscillate the ODT values to try to keep the density const
+odt_wiggle = False
+# reference voltages for the scale
+odt1_ref = 0.2 
+odt2_ref = 4.0
 detuning = 0.150 # MHz
 # times
 pulsetime = 0.020
 # this is the time delay time stamp, the actual time at which pulse starts is defind later
-t = np.array([0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18])
-# t = np.array([ 0.22, 0.23, 0.24,0.25,0.26, 0.27, 0.28,0.29, 
-# 					])
+# t = np.array([0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18])
+t = np.array([ 0.21, 0.22, 0.24,0.26, 0.27, 0.29, 
+ 					])
 np.random.shuffle(t)
-f = 20 #kHz
-amp = 1.8 # Vpp
+f = 10 #kHz
+amp = 0.9 # Vpp
 vva= 8
 reps = 15
 
@@ -147,7 +178,19 @@ x0 = 47.2227
 
 ###getting the field wiggle calibration done previously 
 field_cal_df = pd.read_csv(os.path.join(os.getcwd(), 'FieldWiggleCal//field_cal_summary.csv'))
-field_cal_df = field_cal_df[(field_cal_df['wiggle_freq'] == f) & (field_cal_df['wiggle_amp'] == amp)]
+if amp in field_cal_df['wiggle_amp'].unique():
+	field_cal_df = field_cal_df[(field_cal_df['wiggle_freq'] == f) & (field_cal_df['wiggle_amp'] == amp)]
+	field_params = field_cal_df[['B_amp', 'B_phase', 'B_offset']].values[-1]
+	print(f'Using field cal from {field_cal_df['run'].values[-1]} with {field_cal_df['wiggle_freq'].values[-1]}kHz freq and {field_cal_df['wiggle_amp'].values[-1]}Vpp amp')
+else:
+	print("Requested field cal doesn't exist, probably because that specific amplitude wasn't calibrated.\nAttempting to fudge it.")
+	field_cal_df = field_cal_df[(field_cal_df['wiggle_freq'] == f)]
+	popt_b, pcov_b = curve_fit(Linear, field_cal_df['wiggle_amp'], field_cal_df['B_amp'], sigma=field_cal_df['e_B_amp'])
+	fudged_bamp = Linear(amp, *popt_b)
+	fudged_bphase, fudged_boffset = field_cal_df['B_phase'].mean(), 202.14
+	field_params = fudged_bamp, fudged_bphase, fudged_boffset
+	print(f'Fudged field params are: {fudged_bamp:.3f} G, {fudged_bphase:.2f} rad, {fudged_boffset:.3f} G')
+
 # also get the experimental phase shift results for f0
 results_df = pd.read_csv(os.path.join(os.getcwd(),'analysis//phase_shift_2025_summary.csv'))
 # thisis because I annoyingly saved the result as a string of a list and need to split it
@@ -157,8 +200,7 @@ results_df = pd.read_csv(os.path.join(os.getcwd(),'analysis//phase_shift_2025_su
 
 ###plotting field calibration 
 t2 = np.linspace(min(t), max(t), 100)
-###fitting sin to field calibration
-from scipy.optimize import curve_fit
+
 def fit_fixedSinkHz(t, y, run_freq, eA, p0=None):
 	"""
 	need docstring, and maybe a better way to code this
@@ -186,32 +228,40 @@ def fit_fixedSinkHz(t, y, run_freq, eA, p0=None):
 		# plabel = fit_label(popts, perrs, ["A", "p", "C"])#, units=["", f"$\pi$", ""])
 
 	return popts, perrs, FixedSinkHz
-field_params = field_cal_df[['B_amp', 'B_phase', 'B_offset']].values[0]
 
 popts, pcov, sin = fit_fixedSinkHz(t, np.sin((f*2*np.pi)*t-field_params[1]), f, 0, p0=[0.07,6,202.1])
 
 # plt.plot(t, np.sin((f*2*np.pi)*t-field_params[1]), marker="o", ls="", color="hotpink", 
 # 		 label = 'Time delay timestamps')
-plt.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]), marker="", ls="-", color="hotpink", label='Field cal')
+fig, ax = plt.subplots()
+ax.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]), marker="", ls="-", color="hotpink", label='Field cal')
 # plt.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_params[1]), marker="o", ls="", color="cornflowerblue", 
 # 		 label = 'Time of Beginning of Pulse')
 expectedphaseshift = np.pi/4
 expected_timedelay = t2 + expectedphaseshift / (2*np.pi*f)
-plt.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]-expectedphaseshift), marker="", ls="-", color="crimson", 
+ax.plot(t2, np.sin((f*2*np.pi)*t2-field_params[1]-expectedphaseshift), marker="", ls="-", color="crimson", 
 		 label = f'Expected phase shift comp. field cal= {expectedphaseshift:.2f}')
-plt.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_params[1]-expectedphaseshift), marker="o", ls="", color="cornflowerblue", 
+ax.plot(t_pulse, np.sin((f*2*np.pi)*t_pulse-field_params[1]-expectedphaseshift), marker="o", ls="", color="cornflowerblue", 
 		 label = 'Time of Beginning of Pulse')
-plt.plot(t, np.sin((f*2*np.pi)*t-field_params[1]-expectedphaseshift), marker="o", ls="", color="crimson", 
+ax.plot(t, np.sin((f*2*np.pi)*t-field_params[1]-expectedphaseshift), marker="o", ls="", color="crimson", 
  		 label = 'Time delay timestamps')
 
-plt.xlabel("time (ms)")
-plt.ylabel("B (au)")
-plt.legend()
+ax.set(
+	xlabel = "time (ms)", 
+	ylabel = "B (au)" )
+ax.legend()
 
-
+ax2 = ax.twinx()
 #generate a list of f0s based on B for each time we choose 
 #using t because I want the f0 associated with the time that the phase shift is measured at
 Bs = sin(t, *field_params)
+
+if odt_wiggle:
+	ax2.plot(t, field_to_odt(Bs), marker = '+', ls='')
+	ax2.set(
+		ylabel = 'ODT'
+	)
+
 use_static_cal =False
 if use_static_cal:
 	# linear interpolation from static dimer measurements around unitarity
@@ -224,15 +274,15 @@ else :
 	# ys = [f0_fit[2] + f0_fit[0], f0_fit[2]-f0_fit[0]] # [const + amp, const-amp]
 
 # #dimer center pts freqs based on 2025-10-01_L run 
-# xs = [4.008814, 4.008802, 4.002268, 3.99069,3.990477, 3.973251, 3.973131, 3.960835,   
-# 	  3.95955]
-# ys = [ 202.04432777360583, 202.04432777360583, 202.08310682397507, 
-# 	  202.14250352617975, 202.14250352617975, 202.20524934772862, 
-# 		  202.20524934772862, 202.24195852851076,  202.24195852851076]
-# xs.reverse() # higher Eb = lower field
+xs = [4.008814, 4.008802, 4.002268, 3.99069,3.990477, 3.973251, 3.973131, 3.960835,   
+	  3.95955]
+ys = [ 202.04432777360583, 202.04432777360583, 202.08310682397507, 
+	  202.14250352617975, 202.14250352617975, 202.20524934772862, 
+		  202.20524934772862, 202.24195852851076,  202.24195852851076]
+xs.reverse() # higher Eb = lower field
 
-# B_to_f0 = interp1d(xs, ys, fill_value='extrapolate')
-# predicted_f0s_list = B_to_f0(Bs)
+B_to_f0 = interp1d(xs, ys, fill_value='extrapolate')
+predicted_f0s_list = B_to_f0(Bs)
 
 if HFT == True:
 	scanlist_df = pd.DataFrame({'field':Bs})
@@ -243,6 +293,10 @@ if HFT == True:
 	scanlist_df['chargetime'] = chargetimes
 	scanlist_df['wiggletime'] = t_pulse
 	scanlist_df = pd.concat([scanlist_df] * reps, ignore_index=True)
+	if odt_wiggle:
+		scanlist_df['ODTscale'] = field_to_odt(scanlist_df['field'])
+		scanlist_df['ODT1'] = odt1_ref * scanlist_df['ODTscale']
+		scanlist_df['ODT2'] = odt2_ref * scanlist_df['ODTscale']
 
 	bg_df = scanlist_df.copy()
 	bg_df['VVA']=0
@@ -292,81 +346,3 @@ else:
 	final_df = pd.DataFrame(final_array)
 	if export:
 		final_df.to_excel(fname, index=False)
-
-# blame KX for this
-# ####exporting scan list to excel
-# all_scans = []
-
-# all_ds = []
-# all_f0s = []
-# all_vvas = []
-# all_ts = []
-# all_chargetimes = []
-
-# if export:
-# 	 #t_pulse here since the time the pulse starts is different than the expected ps shift time
-# 	for idx, (f0s, time_val) in enumerate(zip(scanlist, t_pulse)):
-# 		# ts = time_val #np.repeat(t, len(f0s) * n_dimer_repeat)  # shape: (len(f0s) * len(t),)
-# 		# chargetimes = 1 - ts - pulsetime - wait
-# 		# assert len(f0s_repeated) == len(t) * n_dimer_repeat
-# 		# print(f0s)
-# 		for _ in range(n_dimer_repeat):
-# 			ds = x0 - f0s
-# 			# print(f0s)
-
-# 		# Make sure time arrays match length
-# 			all_ts.append(np.full(len(ds), time_val, dtype=float))
-# 			all_chargetimes.append(np.full(len(ds), 1 - time_val - pulsetime - wait, dtype=float))
-# 			if randomize:
-#     # Create a random permutation of indices
-# 				indices = np.random.permutation(len(ds))
-#     # Shuffle both ds and f0s in the same way
-# 				ds_shuffled = ds[indices]
-# 				# print(ds_shuffled)	
-# 				f0s_shuffled = f0s[indices]
-
-# 		# # Append shuffled data
-# 				all_ds.append(ds_shuffled)
-# 				all_f0s.append(f0s_shuffled)
-# 				all_vvas.append(np.ones_like(ds_shuffled) * vva)
-# 			else:
-# 				all_ds.append(ds)
-# 				all_f0s.append(f0s)
-# 				all_vvas.append(np.ones_like(ds) * vva)	
-
-# 		# Add one background point after each 3 repeats
-# 		ds_bg = np.array([43])
-# 		f0s_bg = np.array([x0 - 43])
-# 		vvas_bg = np.array([0])
-# 		times_bg = np.array([time_val])
-# 		chargetimes_bg = np.array([1 - time_val - pulsetime - wait])
-
-# 		all_ds.append(ds_bg)
-# 		all_f0s.append(f0s_bg)
-# 		all_vvas.append(vvas_bg)
-# 		all_ts.append(times_bg)
-# 		all_chargetimes.append(chargetimes_bg)
-
-
-# 	all_ds = np.concatenate(all_ds)
-# 	all_f0s = np.concatenate(all_f0s)
-# 	all_vvas = np.concatenate(all_vvas)
-# 	all_ts = np.concatenate(all_ts)
-# 	all_chargetimes = np.concatenate(all_chargetimes)
-
-# 	scan_df = pd.DataFrame({
-# 		"freq": all_ds,
-# 		"det": all_f0s,
-# 		"vva": all_vvas,
-# 		"chargetime": all_chargetimes,
-# 		"time": all_ts
-# 	})
-# 	all_scans.append(scan_df)
-	
-# 	if randomize:
-# 		fname = fname.replace(".xlsx", "_randomized.xlsx")
-# 		final_df = pd.concat(all_scans, ignore_index=True)
-# 		final_df.to_excel(fname, index=False)
-# 	else:
-# 		final_df = pd.concat(all_scans, ignore_index=True)
-# 		final_df.to_excel(fname, index=False)

@@ -25,6 +25,9 @@ EXPORT =False
 def Saturation(x, A, x0):
 	return A*(1-np.exp(-x/x0))
 
+def Saturation_with_const(x, A, x0, C):
+	return A*(1-np.exp(-x/x0)) + C
+
 def Linear(x,m,b):
 	return m*x + b
 
@@ -42,17 +45,21 @@ def linear_extrapolation(popt, pcov):
 	return slope, e_slope
 
 runs = pd.DataFrame({
-	"2025-12-10_J":{"EF":11300, "T":183, "ToTF":0.338, "probe time":5},
+	# "2025-12-19_G":{"EF":11300, "T":183, "ToTF":0.338, "probe time":5, "ffunc":Saturation_with_const},
+	"2025-12-19_H":{"EF":11300, "T":183, "ToTF":0.338, "probe time":7.5, "ffunc":Saturation},
+	"2025-12-19_I":{"EF":11300, "T":183, "ToTF":0.338, "probe time":2.5, "ffunc":Saturation},
+	"2025-12-19_J":{"EF":11300, "T":183, "ToTF":0.338, "probe time":5, "ffunc":Saturation},
+	# "2025-12-17_L":{"EF":11300, "T":183, "ToTF":0.338, "probe time":2.5}, # FAKE THERMOMETRY
 	 }) # EF in Hz, T in nK
 
 defaults = {'freq':43.24} 
-
 fig, ax = plt.subplots()
 ax.set(xlabel=r"$\Omega_R^2$",
-	   ylabel=r"$\alpha_d$")
+	ylabel=r"$\alpha_d$")
 
 
 for i, run in enumerate(runs):
+
 	# find data files
 	y, m, d, l = run[0:4], run[5:7], run[8:10], run[-1]
 	runpath = glob(f"{root_data}/{y}/{m}*{y}/{d}*{y}/{l}*/")[0] # note backslash included at end
@@ -63,7 +70,7 @@ for i, run in enumerate(runs):
 	print("Filename is " + filename)
 	data = Data(filename, path=datfiles[0])
 
-	EF, T, ToTF, probe_t = runs[run]
+	EF, T, ToTF, probe_t,ffunc = runs[run]
 
 	data.data['trf'] = probe_t/1e6
 	data.data['EF'] = EF
@@ -73,7 +80,7 @@ for i, run in enumerate(runs):
 
 
 	# complete analysis of data
-	data.analysis(bgVVA=0, pulse_type="square", rfsource="micrO")
+	data.analysis(bgVVA=0, pulse_type="square", rfsource="micro")
 
 	# group and average
 	data.group_by_mean('OmegaR2')
@@ -83,8 +90,11 @@ for i, run in enumerate(runs):
 	x = df['OmegaR2']
 	y = df['alpha_dimer']
 	yerr = df['em_alpha_dimer']
-	p0 = [0.1, 0.5e11]
-	popt, pcov = curve_fit(Saturation, x, y, sigma=yerr, p0=p0)
+	if ffunc == Saturation:
+		p0=[0.01, 1e11]
+	elif ffunc == Saturation_with_const:
+		p0 = [0.01, 1e11, 0]
+	popt, pcov = curve_fit(ffunc, x, y, sigma=yerr, p0=p0)
 	perr = np.sqrt(np.diag(pcov))
 
 	# Compute extrapolated linear slope and error
@@ -92,10 +102,14 @@ for i, run in enumerate(runs):
 
 	# plot data and curves
 	xs = np.linspace(x.min(), x.max(), 30)
-	ax.plot(xs, Saturation(xs, *popt), ls='-', marker='', color=color)
-	ax.plot(xs, Linear(xs, popt[0]/popt[1], 0), ls='--', marker='', color=color)
-	ax.plot(x, y, ls='', marker='d', markersize=2,color=color, label=f"trf={probe_t}us")
-
+	ax.plot(xs, ffunc(xs, *popt), ls='-', marker='', color=colors[i])
+	if len(popt) == 2:
+		const = 0
+	else:
+		const = popt[-1]
+	ax.plot(xs, Linear(xs, popt[0]/popt[1], 0) + const, ls='--', marker='', color=colors[i])
+	ax.plot(x, y, ls='', marker='d', markersize=2, label=fr"{run}, trf={probe_t}us, $\Omega_0^2 = {popt[1]/(2*np.pi)**2/1e6:.1f}$kHz^2", color=colors[i])
+	
 	
 
 	# results_dict = {'Bfield': Bfield, 'EF': EF, 'ToTF':ToTF, 'trf': trf, 'detuning': run.data['freq'],
@@ -103,10 +117,9 @@ for i, run in enumerate(runs):
 	# 				'alpha_max': popt[0], 'e_alpha_max': perr[0], 'C': C, 'e_C': e_C}
 	# new_row_df = pd.DataFrame([results_dict])
 	# results_df = pd.concat([results_df, new_row_df])
-
 ax.legend()
-fig.suptitle(f'Sat. for run={runname}, ToTF={ToTF}')
 fig.tight_layout()
+
 
 
 # if EXPORT:

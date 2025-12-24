@@ -49,6 +49,7 @@ class metadata:
         r_name = r_name.lower()
         # just get first path since VVA's are all the same
         r_df = pd.read_csv(r_paths[0])
+        # print(r_df['freq'])
 
         VVA = np.max(r_df.VVA)
         # print(VVA)
@@ -58,6 +59,7 @@ class metadata:
 
         # pulse time
         i = r_name.find("us")
+        print(i)
         try:
             pulse_time = float(r_name[i-2:i]) # in us
         except:
@@ -66,12 +68,13 @@ class metadata:
         # VPP
         i = r_name.find("vpp")
         try:
-            Vpp = float(r_name[i-3:i]) # in V
+            Vpp = float(r_name[i-3:i].replace('p', '.')) # in V
         except:
             Vpp = 1.8 # default to 1.8 V if not found
+            print('default to 1.8 V')
 
-        is_HFT = ("hft" in r_name)
-
+        is_HFT = ("hft" in r_name) or r_df['freq'].nunique() == 1
+        # print(is_HFT)
         self.df.loc[j, ["freq", "pulse_time", "Vpp", "VVA", "is_HFT"]] = [wiggle_freq, pulse_time, Vpp, VVA, is_HFT]
 
         if is_HFT:
@@ -90,9 +93,13 @@ class metadata:
                             ]
         
         if len(field_cal) > 1:
-            field_cal = field_cal[field_cal['pulse_length']==40]
-        
-        field_cal_run = field_cal['run'].values[0]
+            field_cal = field_cal.tail(1)
+        # print(self.field_cal_df['wiggle_amp']==wiggle_amp)
+        try:
+            field_cal_run = field_cal['run'].values[0]
+            print(field_cal_run)
+        except:
+            field_cal_run = "fudge"
 
         self.df.loc[i, "field_cal_run"] = field_cal_run
 
@@ -157,37 +164,40 @@ class metadata:
 
 if __name__ == "__main__":
     # attributes
-    runs = ["2025-09-24_E", 
-            "2025-10-01_L",
-            "2025-10-18_O",
-            "2025-10-17_M",
-            "2025-10-21_H", 
-            "2025-10-23_R",
-            "2025-10-23_S",
-            "2025-11-06_H"]
+    runs = [
+        # "2025-09-24_E", 
+        #     "2025-10-01_L",
+        #     "2025-10-18_O",
+        #     "2025-10-17_M",
+        #     "2025-10-21_H", 
+        #     "2025-10-23_R",
+        #     "2025-10-23_S",
+        #     "2025-11-06_H"
+        '2025-12-23_C'
+            ]
     #"2025-09-24_E" is 6kHz 20us pulse 1.8Vpp
     #2025-10-01_L is 10kHz 20us pulse 1.8Vpp
 
     # change format later?
     drop_list = [
-          [0.43],
-          [0.29], 
-          [],
-          [],
-          [],
-          [],
-          [],
+        #   [0.43],
+        #   [0.29], 
+        #   [],
+        #   [],
+        #   [],
+        #   [],
+        #   [],
           []
     ]
 
     notes = [
-        "good", 
-        "good",
-        "medium temp run single shot",
-        "single shot",
-        "decent",
-        "bad",
-        "?",
+        # "good", 
+        # "good",
+        # "medium temp run single shot",
+        # "single shot",
+        # "decent",
+        # "bad",
+        # "?",
         ""
     ]
  

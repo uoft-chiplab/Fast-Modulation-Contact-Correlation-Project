@@ -12,7 +12,7 @@ def saturation_scale(x, x0):
 	return x/x0*1/(1-np.exp(-x/x0))
 
 # old cals we used for HFT_dimer_bg_analysis.py
-SATURATION= True
+SATURATION= False
 dimer_x0 = 5211 
 e_dimer_x0 = 216
 calibrated_t = 10 # us
@@ -55,12 +55,15 @@ runs = pd.DataFrame({
 	#  "2025-12-12_E": {"EF":14420, "T":377, "quench time":5, "probe time":10},
 	#  "2025-12-15_H": {"EF":13940, "T":386, "quench time":5, "probe time":10, "ratio":8515},
 	#  "2025-12-15_J": {"EF":13940, "T":386, "quench time":5, "probe time":10, "ratio":7030},
-	"2025-12-16_A":{"EF": 13930, "T":389, "quench time":5, "probe time":5, "ratio":5050},
-	"2025-12-16_B":{"EF": 13930, "T":389, "quench time":5, "probe time":2.5, "ratio":5050},
-	"2025-12-16_D":{"EF": 13930, "T":389, "quench time":5, "probe time":4, "ratio":5050},
-	"2025-12-16_E":{"EF": 13930/1.3, "T":389/2, "quench time":5, "probe time":4, "ratio":5050}, # DID NOT DO THERMOMETRY
-	"2025-12-17_H":{"EF": 11140, "T":196, "quench time":5, "probe time":2.5, "ratio":5050},
-	"2025-12-17_I":{"EF": 11140, "T":196, "quench time":5, "probe time":5, "ratio":5050},
+	"2025-12-16_A":{"EF": 13930, "T":389, "quench time":5, "probe time":5, "ratio":5050, "x0":7211},
+	# "2025-12-16_B":{"EF": 13930, "T":389, "quench time":5, "probe time":2.5, "ratio":5050},
+	# "2025-12-16_D":{"EF": 13930, "T":389, "quench time":5, "probe time":4, "ratio":5050},
+	# "2025-12-16_E":{"EF": 13930/1.3, "T":389/2, "quench time":5, "probe time":4, "ratio":5050}, # DID NOT DO THERMOMETRY
+	# "2025-12-17_H":{"EF": 11140, "T":196, "quench time":5, "probe time":2.5, "ratio":5050},
+	"2025-12-17_I":{"EF": 11140, "T":196, "quench time":5, "probe time":5, "ratio":5050, "x0":7211},
+	"2025-12-19_L":{"EF":11300, "T":183, "quench time":5, "probe time":7.5, "ratio":5050, "x0":10774},
+	"2025-12-19_M":{"EF":11300, "T":183, "quench time":5, "probe time":5, "ratio":5050, "x0":7211},
+	"2025-12-19_N":{"EF":11300, "T":183, "quench time":5, "probe time":6, "ratio":5050, "x0":7211},
 
 	 }) # EF in Hz, T in nK
 ### THINK ABOUT WHAT IS DEFAULT EVERY TIME ANOTHER DATASET IS ADDED
@@ -115,7 +118,7 @@ for i, run in enumerate(runs):
 	print("Filename is " + filename)
 	data = Data(filename, path=datfiles[0])
 
-	EF, T, quench_t, probe_t, ratio = runs[run]
+	EF, T, quench_t, probe_t, ratio, x0 = runs[run]
 	data.data['trf'] = probe_t/1e6
 	ToTF = kB*(T*1e-9)/(h*EF)
 	data.data['EF'] = EF
@@ -125,11 +128,11 @@ for i, run in enumerate(runs):
 			data.data[key] = defaults[key]
 
 	# alldata = data.analysis(bgVVA = 0,nobg=True, pulse_type="square").data
-	data.analysis(bgVVA = 0, pulse_type="square", rfsource="micrO")
+	data.analysis(bgVVA = 0, pulse_type="square", rfsource="micro")
 
 	
-	data.data['sat_scale_dimer'] = saturation_scale(data.data['OmegaR2']/(2*np.pi)**2 / 1e6 * probe_t**2,
-												 dimer_x0 * calibrated_t**2)
+	data.data['sat_scale_dimer'] = saturation_scale(data.data['OmegaR2']/(2*np.pi)**2 / 1e6,
+												 x0)
 	if SATURATION:
 		cols = ['alpha_dimer', 'scaledtransfer_dimer', 'contact_dimer']
 		for col in cols:

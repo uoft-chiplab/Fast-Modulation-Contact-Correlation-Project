@@ -49,6 +49,7 @@ from scipy.optimize import curve_fit
 data = pd.read_csv(root_project + os.sep+'phase_shift_2025_summary.csv')
 if 'Unnamed: 0' in data.columns:
 	data.rename(columns={'Unnamed: 0':'run'}, inplace=True)
+data = data[data['run'].str.contains('2025-12-23')]
 metadata = pd.read_csv(root_project + os.sep + 'metadata.csv')
 # later plotting gets easier if I merge the summary df and the metadat df
 data= data.merge(metadata, on='run')
@@ -500,8 +501,8 @@ ax.set(
 )
 
 # plot C vs T, and scale sus vs. T
-fig, ax = plt.subplots(1, 2, figsize=(8,3))
-# ax = ax.flatten()
+fig, ax = plt.subplots(2, 2, figsize=(8,6))
+ax = ax.flatten()
 kF = np.sqrt(2*mK*data['EF'])/hbar
 Cs = [Cfit[-1] for i, Cfit in enumerate(data['Sin Fit of C'])]
 Cerrs = [Cfit[-1] for i, Cfit in enumerate(data['Error of Sin Fit of C'])]

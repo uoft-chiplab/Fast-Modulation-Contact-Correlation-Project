@@ -20,7 +20,7 @@ from get_metadata import metadata
 # runs = ["2025-09-24_E", "2025-10-01_L","2025-10-17_E","2025-10-17_M","2025-10-18_O","2025-10-20_M",
 # 		"2025-10-21_H", "2025-10-23_R","2025-10-23_S"]
 # have to put run into metadata first; use get_metadata.py to fill
-run = "2025-11-20_F"
+run = "2025-12-23_H"
 #CONTROLS
 SHOW_INTERMEDIATE_PLOTS = True
 Export = True
@@ -29,7 +29,7 @@ avg_dimer_spec = False # whether or not to average detunings before fitting dime
 fix_width = True # whether or not dimer spectra sinc2 fits have a fixed width
 plot_bg = True # whether or not to plot background points and fit
 single_shot = True
-track_bg = True
+track_bg = False
 rerun = False
 hijack_freq = True  # Sets HFT detuning to 150kHz no matter what data.freq says.
 
@@ -78,10 +78,19 @@ CCC = pd.read_csv("theory/ac_s_Eb_vs_B_220-225G.dat", header=None, names=['B', '
 field_cal_run = meta_df['field_cal_run'].values[0]
 field_cal_df_path = os.path.join(field_cal_folder, "field_cal_summary.csv")
 field_cal_df = pd.read_csv(field_cal_df_path)
-field_cal = field_cal_df[field_cal_df['run'] == field_cal_run]
-if len(field_cal) > 1:
-	field_cal = field_cal[field_cal['pulse_length'] == 40]
-print(f'Field cal run being used is {field_cal_run}')
+if field_cal_run != "fudge":
+	field_cal = field_cal_df[field_cal_df['run'] == field_cal_run]
+	if len(field_cal) > 1:
+		field_cal = field_cal[field_cal['pulse_length'] == 40]
+	print(f'Field cal run being used is {field_cal_run}')
+else:
+	field_cal = field_cal_df[field_cal_df['wiggle_freq'] == wiggle_freq]
+	popt_b, pcov_b = curve_fit(line, field_cal_df['wiggle_amp'], field_cal_df['B_amp'], sigma=field_cal_df['e_B_amp'])
+	fudged_bamp = line(wiggle_amp, *popt_b)
+	fudged_bphase, fudged_boffset = field_cal_df['B_phase'].mean(), 202.14
+	field_cal[['B_amp', 'B_phase', 'B_offset']] = fudged_bamp, fudged_bphase, fudged_boffset
+	print(f'Fudged field params are: {fudged_bamp:.3f} G, {fudged_bphase:.2f} rad, {fudged_boffset:.3f} G')
+
 
 def line(x, m, b):
 	return m*x+b
@@ -311,9 +320,9 @@ for i, fpath in enumerate(datfiles):
 			data.data['freq'] = 47.2227 + 0.150
 		# calculate bg over time; needs to load all the datfiles first
 		if track_bg:
-			data.analysis(pulse_type=pulse_type.values[0], track_bg=True)
+			data.analysis(pulse_type=pulse_type.values[0], track_bg=True, rfsource="phaseo")
 		else: 
-			data.analysis(pulse_type=pulse_type.values[0])
+			data.analysis(pulse_type=pulse_type.values[0], rfsource="phaseo")
 			
 		
 		if CORR_PULSECONV:
@@ -436,27 +445,27 @@ for i, fpath in enumerate(datfiles):
 
 cmap = plt.colormaps.get_cmap('viridis')
 colours = cmap(np.linspace(0, 1, len(df.index)))
-if is_HFT:
+# if is_HFT:
 
-	fig, ax = plt.subplots(1, 2, figsize=(8,3.5))
-	for i, j in enumerate(df.index):
-		row = df.loc[j]
-		ax[0].plot(row['number shots'],row['c9bg_var']/row['c9_var'],
-			 color=colours[i],
-			 label = f'{np.round(j, 3)}'
-			 )
-		ax[1].plot(row['number shots'],row['c5bg_var']/row['c5_var'], color=colours[i])
-	ax[0].legend(loc='upper left')
+# 	fig, ax = plt.subplots(1, 2, figsize=(8,3.5))
+# 	for i, j in enumerate(df.index):
+# 		row = df.loc[j]
+# 		ax[0].plot(row['number shots'],row['c9bg_var']/row['c9_var'],
+# 			 color=colours[i],
+# 			 label = f'{np.round(j, 3)}'
+# 			 )
+# 		ax[1].plot(row['number shots'],row['c5bg_var']/row['c5_var'], color=colours[i])
+# 	ax[0].legend(loc='upper left')
 	
-	ax[0].set(
-		ylabel = 'var(c9bg)/var(c9)',
-		xlabel = 'number shots'
-	)
-	ax[1].set(
-		ylabel = 'var(c5bg)/var(c5)',
-		xlabel = 'number shots'
-	)
-	fig.tight_layout()
+# 	ax[0].set(
+# 		ylabel = 'var(c9bg)/var(c9)',
+# 		xlabel = 'number shots'
+# 	)
+# 	ax[1].set(
+# 		ylabel = 'var(c5bg)/var(c5)',
+# 		xlabel = 'number shots'
+# 	)
+# 	fig.tight_layout()
 
 ###plot all the dimer fits on one multi grid plot
 if (not is_HFT) and SHOW_INTERMEDIATE_PLOTS and valid_results:
@@ -574,7 +583,7 @@ def plot_and_fit_sine(df, attr, freq, ax, ax_resid, ylabel, param_labels=None,
 
 	return popts, perrs, plabel, sine_fit
 
-def make_plot_title(fig, run, pulse_time, wiggle_freq, dropped_list, 
+def make_plot_title(fig, run, pulse_time, wiggle_freq, HFTornot, dropped_list, 
 					popts_list, perrs_list, B_phase, eB_phase, plabels, y=1.02):
 
 	###Finding the phase shift by subtracting various fits
@@ -604,7 +613,7 @@ def make_plot_title(fig, run, pulse_time, wiggle_freq, dropped_list,
 				f"\nphase shift f0-B = {phases[1]:.3f}" 
 				f"\nphase shift C-B = {phases[2]:.2f}")
 		
-	fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA\n{fits}" +\
+	fig.suptitle(f"{run}\n{pulse_time}us Pulse, {wiggle_freq}kHz Modulation, {VVA} VVA, {HFTornot}\n{fits}" +\
 				f'\nDropped Wiggle Times: {[float(x) for x in dropped_list]}', y=y)
 
 	return phases, ephases
@@ -642,10 +651,14 @@ ax1.patch.set_visible(False)
 ax2.set_zorder(2)
 ax2.patch.set_visible(False)
 
-phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, 
+if is_HFT:
+	HFTornot = 'HFT'
+else:
+	HFTornot = 'Dimer'
+phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, HFTornot,
 				dropped_list, [poptsA[1], poptsf0[1], poptsC[1]], [perrsA[1], perrsf0[1], perrsC[1]], 
 				B_phase, eB_phase,
-				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
+				[r"$\phi$ for $C$ - $E_\mathrm{d}$", 
 										r"$\phi$ for $E_\mathrm{d}$ - $B$ cal.", 
 										r"$\phi$ for $C$ - $B$ cal."])
 
@@ -674,7 +687,7 @@ poptsB, perrsB, plabelB, __ = plot_and_fit_sine(df, "B", wiggle_freq, ax_B, resi
 
 fig.legend(B_plots[0], [B_label], loc='upper center', bbox_to_anchor=(1, 1.1), title="field cal")
 
-phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, 
+phases, ephases = make_plot_title(fig, run, pulse_time, wiggle_freq, HFTornot,
 				dropped_list, [poptsA[1], poptsB[1], poptsC[1]], [perrsA[1], perrsB[1], perrsC[1]], 
 				B_phase, eB_phase,
 				 [r"$\phi$ for $C$ - $E_\mathrm{d}$", 
