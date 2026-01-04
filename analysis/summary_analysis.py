@@ -40,6 +40,8 @@ import pandas as pd
 import ast
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
+import seaborn as sns
+
 
 def contact_time_delay(phi, period):
 	""" Computes the time delay of the contact response given the oscillation
@@ -81,47 +83,14 @@ data['barnu'] = 300 # TODO FIX THIS ESTIMATE; HAVE TO LOOK AT OLD DATA AND REFER
 data.rename(columns={'Modulation Freq (kHz)':'mod_freq_kHz',
 					 'Phase Shift C-B (rad)':'phaseshift',
 					 'Phase Shift C-B err (rad)':'phaseshift_err'}, inplace=True)
-data['tau_from_ps'] = data['phaseshift'] / (2 * pi * data['mod_freq_kHz'] * 1e3)  # [us]
+data['tau_from_ps'] = data['phaseshift'] / (2 * pi * data['mod_freq_kHz'] * 1e3) * 1e6  # [us]
 data['tau_from_ps_err'] = 1/(np.cos(data['phaseshift']))**2 * data['phaseshift_err']/ (data['mod_freq_kHz']*1e3) / 2/np.pi * 1e6 # sec^2(x) * \delta x
 data['time_delay'] = contact_time_delay(data['phaseshift'], 1/(data['mod_freq_kHz']*1e3)) * 1e6  # [us]
 data['time_delay_err'] = data['phaseshift_err'] / data['phaseshift'] * data['time_delay'] # TODO: check
-
+data['betaomega'] = data['mod_freq_kHz'] * 1e3 / data['T']  # dimless
+data = data[data['HFT_or_dimer']=='HFT'] # Hmm I get big differences depending on measurement
 # pickle
 pickle_file = cc_folder + os.sep + 'time_delay_TUGs_working.pkl'
-
-# set color via normalized ToTF
-xs = np.linspace(data['T'].min(), data['T'].max(), 10)
-norm = colors.Normalize(vmin = xs.min(), vmax = xs.max())
-cmap = cm.get_cmap('RdYlBu').reversed()
-def get_color(value, alpha=1):
-	"""Map a numeric value to a color. Color map and normalization created outside of scope."""
-	color = cmap(norm(value))
-	if alpha != 1:
-		color[-1]=alpha
-	return color
-def darken(rgba, factor=0.5):
-	"""
-	Darken an RGBA color by multiplying the RGB channels.
-	factor < 1 = darker, factor = 1 = same color
-	"""
-	r, g, b, a = rgba
-	return (r * factor, g * factor, b * factor, a)
-def get_marker(value, HFT_or_dimer):
-	"""Map a numeric value to a marker. Hardcoded to map mod freqs (kHz) and also pulse type (HFT_or_dimer)."""
-	# markers = ['s', 'o', '^', 'x', 'D', '*']  # circle, square, triangle, etc.
-	if HFT_or_dimer == 'dimer':
-		marker_map = {
-			6.0: 's',
-			10.0: 'o',
-			}
-	elif HFT_or_dimer == 'HFT':
-		marker_map = {
-			6.0: 'd',
-			10.0: 'P',
-			20.0 : 'v'
-		}
-	return marker_map.get(value, 'x') # default to 'x' if not found
-
 
 ### Load or create TUG objects
 if os.path.exists(pickle_file):
@@ -159,16 +128,51 @@ if update_tugs:
 else:
 	print("No new TUGs created; pickle file remains unchanged.")
 
-### 
-fig, axs = plt.subplots(2,2, figsize=(8,6))
-axs = axs.flatten()
+### COMPUTE RESIDUALS AND CORRELATIONS FOR PHASE SHIFTS AND TIME DELAYS
 
-pred_ps = [tug.phiLR for tug in TUGs] # [rad]
+# predicted values from TUGs
+pred_ps = [tug.evaluate(row.betaomega, 'phiLR') for tug, row in zip(TUGs, data.itertuples())] # [rad]
 pred_tau = [tug.tau * 1e6 for tug in TUGs] # [us]
-pred_delay = [tug.time_delay_LR * 1e6 for tug in TUGs] # [us]
-pred_delay_over_tau = [tug.time_delay_LR / tug.tau for tug in TUGs] # dimless
-
+pred_delay = [tug.evaluate(row.betaomega, 'time_delay_LR') * 1e6 for tug, row in zip(TUGs, data.itertuples())] # [us]
+# pred_delay_over_tau = [np.array(pred_delay)/np.array(pred_tau)]
+# dataframe residuals
 data['res_ps'] = data['phaseshift'] - pred_ps
 data['res_tau'] = data['tau_from_ps'] - pred_tau
 data['res_delay'] = data['time_delay'] - pred_delay
-data['res_delay_over_tau'] = data['time_delay']/data['tau_from_ps'] - pred_delay_over_tau
+# data['res_delay_over_tau'] = data['time_delay']/data['tau_from_ps'] - pred_delay_over_tau
+
+# List of parameters to check for correlations
+params_to_check = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
+res_cols = ['res_ps', 'res_tau', 'res_delay'] 
+
+# Set the visual style
+sns.set_theme(style="whitegrid")
+
+# Plot residuals and check for correlations
+for res_col in res_cols:
+	fig, axes = plt.subplots(1, len(params_to_check) + 1, figsize=(18, 5))
+	fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
+	sns.histplot(data[res_col], kde=True, ax=axes[0], color='gray')
+	axes[0].axvline(0, color='red', linestyle='--')
+	axes[0].set_title('Residual Distribution')
+	axes[0].set_xlabel('Residual (Observed - Predicted)')
+
+	# Scatter plots of residuals vs parameters
+	for i, param in enumerate(params_to_check):
+		ax = axes[i+1]
+		sns.scatterplot(data=data, x=param, y=res_col, ax=ax, alpha=0.9)
+		
+		# Add a horizontal line at 0 for reference
+		ax.axhline(0, color='red', linestyle='--')
+		
+		# Add a trend line (regression) to highlight hidden correlations
+		sns.regplot(data=data, x=param, y=res_col, ax=ax, 
+					scatter=False, color='blue', )
+		
+		ax.set_title(f'Residual vs {param}')
+
+# Compute correlation coefficients and heat map
+corr_matrix = data[res_cols + params_to_check].corr()
+plt.figure(figsize=(8, 6))
+sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', center=0)
+plt.title('Correlation Matrix of Residuals and Parameters', fontsize=16)

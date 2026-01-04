@@ -9,6 +9,7 @@
 import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
+from scipy.interpolate import interp1d
 from datetime import datetime
 from constants import pi, mK, hbar
 from baryrat import BarycentricRational
@@ -367,6 +368,22 @@ class TrappedUnitaryGas:
     def __repr__(self):
         return f"TUG({self.ToTF}, {self.EF}, {self.barnu}) created at {self.birthday.strftime('%Y-%m-%d %H:%M:%S')}"
     
+    def evaluate(self, betaomega, value='phiLR'):
+        """
+        Evaluator for TUG attributes, intended for after calling modulate_field() so self.betaomegas exists
+        """
+        # make sure attribute exists
+        if not hasattr(self, value):
+            raise AttributeError(f"TUG object has no attribute '{value}'")
+        elif not hasattr(self, "betaomegas"):
+            raise AttributeError("TUG object has no attribute 'betaomegas'. Did you call modulate_field()?")
+            
+        data_y = getattr(self, value)
+
+        # interpolate 
+        f = interp1d(self.betaomegas, data_y, kind='linear', fill_value="extrapolate")
+        return float(f(betaomega))
+
     def calc_contact(self, weight_func=weight_harmonic):
         """Calculates the harmonic trap-averaged contact using ToTF, EF, barnu
         (geometric mean trap freq) and an optional guess mu. Returns the contact."""
@@ -435,7 +452,6 @@ class TrappedUnitaryGas:
         self.zeta = np.append(self.zetaDrude[:nu_small], 
                         self.zetaC[nu_small:])
 
-            
     def calc_Edot(self, nu):
         betaomega = nu/self.T
         if betaomega < 2:
