@@ -505,7 +505,7 @@ B0 = 202.14 # assume avg B is 202.14
 Bamp = data['B_amp']
 dkFa0_inv = 1/(kF*a97(B0 - Bamp)) - 1/(kF*a97(B0 + Bamp)) # max B - min B 
 
-dC_kFda0 = 2*data['contact_AC_amp']/dkFa0_inv # dC/d(kF a0)^-1 
+dC_kFda0 = 2*data['contact_AC_amp']/dkFa0_inv # dC/d(kF a0)^-1 or change in measured contact per change in field/scattering length 
 dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_amp'])**2 + (data['eEF']/data['EF'])**2)
 
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):

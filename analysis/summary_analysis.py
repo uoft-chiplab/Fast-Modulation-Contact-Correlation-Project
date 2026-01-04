@@ -42,6 +42,41 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 import seaborn as sns
 
+def plot_correlations(res_cols, compare_params):
+	"""
+	Plot residuals and correlations between residuals and various parameters.
+	"""
+	# Set the visual style
+	sns.set_theme(style="whitegrid")
+
+	# Plot residuals and check for correlations
+	for res_col in res_cols:
+		fig, axes = plt.subplots(1, len(compare_params) + 1, figsize=(18, 5))
+		fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
+		sns.histplot(data[res_col], kde=True, ax=axes[0], color='gray')
+		axes[0].axvline(0, color='red', linestyle='--')
+		axes[0].set_title('Residual Distribution')
+		axes[0].set_xlabel('Residual (Observed - Predicted)')
+
+		# Scatter plots of residuals vs parameters
+		for i, param in enumerate(compare_params):
+			ax = axes[i+1]
+			sns.scatterplot(data=data, x=param, y=res_col, ax=ax, alpha=0.9)
+			
+			# Add a horizontal line at 0 for reference
+			ax.axhline(0, color='red', linestyle='--')
+			
+			# Add a trend line (regression) to highlight hidden correlations
+			sns.regplot(data=data, x=param, y=res_col, ax=ax, 
+						scatter=False, color='blue', )
+			
+			ax.set_title(f'Residual vs {param}')
+
+	# Compute correlation coefficients and heat map
+	corr_matrix = data[res_cols + compare_params].corr()
+	plt.figure(figsize=(8, 6))
+	sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', center=0)
+	plt.title('Correlation Matrix of Residuals and Parameters', fontsize=16)
 
 def contact_time_delay(phi, period):
 	""" Computes the time delay of the contact response given the oscillation
@@ -70,26 +105,59 @@ def create_TUG(ToTF, EF, barnu, num=50):
 	TUG.rel_amp = 1/(np.sqrt(1+(2*pi*TUG.nus*TUG.tau)**2))
 	return TUG
 
-#2025 data comes from phase_shift.py
+# Load summary data, metadata and merge
 data = pd.read_csv(root_project + os.sep+'phase_shift_2025_summary.csv')
 if 'Unnamed: 0' in data.columns:
 	data.rename(columns={'Unnamed: 0':'run'}, inplace=True)
 metadata = pd.read_csv(root_project + os.sep + 'metadata.csv')
-# later plotting gets easier if I merge the summary df and the metadat df
 data= data.merge(metadata, on='run')
+
+# Load field amplitude calibration and merge
+field_cal_df_path = os.path.join(field_cal_folder, "field_cal_summary.csv")
+field_cal_df = pd.read_csv(field_cal_df_path)
+field_cal_df['field_cal_run'] = field_cal_df['run']
+field_cal_df = field_cal_df[['field_cal_run','B_amp']]
+data=pd.merge(data, field_cal_df, on='field_cal_run')
+
+# Process extra derived results
 data['T'] = data['ToTF'] * (data['EF']/h) # T in Hz
 data['EF_Hz'] = (data['EF']/h).round().astype(int) # EF in Hz and rounded
 data['barnu'] = 300 # TODO FIX THIS ESTIMATE; HAVE TO LOOK AT OLD DATA AND REFERENCE
 data.rename(columns={'Modulation Freq (kHz)':'mod_freq_kHz',
 					 'Phase Shift C-B (rad)':'phaseshift',
-					 'Phase Shift C-B err (rad)':'phaseshift_err'}, inplace=True)
+					 'Phase Shift C-B err (rad)':'phaseshift_err',
+					 }, inplace=True)
 data['tau_from_ps'] = data['phaseshift'] / (2 * pi * data['mod_freq_kHz'] * 1e3) * 1e6  # [us]
 data['tau_from_ps_err'] = 1/(np.cos(data['phaseshift']))**2 * data['phaseshift_err']/ (data['mod_freq_kHz']*1e3) / 2/np.pi * 1e6 # sec^2(x) * \delta x
 data['time_delay'] = contact_time_delay(data['phaseshift'], 1/(data['mod_freq_kHz']*1e3)) * 1e6  # [us]
 data['time_delay_err'] = data['phaseshift_err'] / data['phaseshift'] * data['time_delay'] # TODO: check
 data['betaomega'] = data['mod_freq_kHz'] * 1e3 / data['T']  # dimless
-data = data[data['HFT_or_dimer']=='HFT'] # Hmm I get big differences depending on measurement
-# pickle
+
+# creates lists of only popt[0] and perr[0] (amplitude)
+C_param = 'Sin Fit of C'
+# ensures conversion of strings into actual lists of values
+data[C_param] = data[C_param].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
+data['Error of ' +C_param] = data['Error of ' + C_param].apply(lambda x: np.fromstring(x.strip('[]'), sep=' ').tolist())
+data['C_amp'] = [p[0] for i, p in enumerate(data[C_param])]
+data['C_amp_err'] = [p[0] for i, p in enumerate(data['Error of ' + C_param])]
+data['Ceq'] = [p[-1] for i, p in enumerate(data[C_param])]
+data['Ceq_err'] = [p[-1] for i, p in enumerate(data['Error of ' + C_param])]
+
+B0 = 202.14 # this assumes the average B0 for all measurements
+data['kF'] = np.sqrt(2*mK*data['EF'])/hbar  # [1/m]
+data['dkFa0_inv'] = 1/(data['kF']*a97(B0 - data['B_amp'])) - 1/(data['kF']*a97(B0 + data['B_amp'])) # max B - min B 
+data['dC_kFda0'] = 2*data['C_amp']/data['dkFa0_inv'] # dC/d(kF a0)^-1 
+data['dC_kFda0_err'] = 2*data['dC_kFda0']*np.sqrt((data['C_amp_err']/data['C_amp_err'])**2 + (data['eEF']/data['EF'])**2)
+
+# Optional filter for measurement type
+HFTordimer = 'dimer'  # 'HFT' or 'dimer' or None
+if HFTordimer:
+	print(f"!Filtering to only {HFTordimer} data!")
+	data = data[data['HFT_or_dimer']==HFTordimer] # Hmm I get big differences depending on measurement
+else:
+	print("Using all data types (HFT and dimer).")
+
+# List of TrappedUnitaryGas objects pickle file
 pickle_file = cc_folder + os.sep + 'time_delay_TUGs_working.pkl'
 
 ### Load or create TUG objects
@@ -141,38 +209,26 @@ data['res_tau'] = data['tau_from_ps'] - pred_tau
 data['res_delay'] = data['time_delay'] - pred_delay
 # data['res_delay_over_tau'] = data['time_delay']/data['tau_from_ps'] - pred_delay_over_tau
 
-# List of parameters to check for correlations
-params_to_check = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
+# plot residuals and correlations
+compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
 res_cols = ['res_ps', 'res_tau', 'res_delay'] 
+plot_correlations(res_cols, compare_params)
 
-# Set the visual style
-sns.set_theme(style="whitegrid")
 
-# Plot residuals and check for correlations
-for res_col in res_cols:
-	fig, axes = plt.subplots(1, len(params_to_check) + 1, figsize=(18, 5))
-	fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
-	sns.histplot(data[res_col], kde=True, ax=axes[0], color='gray')
-	axes[0].axvline(0, color='red', linestyle='--')
-	axes[0].set_title('Residual Distribution')
-	axes[0].set_xlabel('Residual (Observed - Predicted)')
+### COMPUTE RESIDUALS AND CORRELATIONS FOR AMPLITUDES AND CONTACTS
+# predicted values from TUGs
+pred_Ctrap =[tug.Ctrap for tug in TUGs] # dimensionless, <Ceq>
+pred_S = [tug.dCdkFa_inv for tug in TUGs] # scale sus
+pred_chioverS = [tug.evaluate(row.betaomega, 'rel_amp') for tug, row in zip(TUGs, data.itertuples())] # chi / S
+# Using theory to compute S, data for chi
+data['theoryS'] = pred_S
+data['chioverS'] = data['dC_kFda0'] / data['theoryS']
+# dataframe residuals
+data['res_Ceq'] = data['Ceq'] - pred_Ctrap
+data['res_dC_kFda0'] = data['dC_kFda0'] - pred_S
+data['res_chioverS'] = data['chioverS'] - pred_chioverS
 
-	# Scatter plots of residuals vs parameters
-	for i, param in enumerate(params_to_check):
-		ax = axes[i+1]
-		sns.scatterplot(data=data, x=param, y=res_col, ax=ax, alpha=0.9)
-		
-		# Add a horizontal line at 0 for reference
-		ax.axhline(0, color='red', linestyle='--')
-		
-		# Add a trend line (regression) to highlight hidden correlations
-		sns.regplot(data=data, x=param, y=res_col, ax=ax, 
-					scatter=False, color='blue', )
-		
-		ax.set_title(f'Residual vs {param}')
-
-# Compute correlation coefficients and heat map
-corr_matrix = data[res_cols + params_to_check].corr()
-plt.figure(figsize=(8, 6))
-sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', center=0)
-plt.title('Correlation Matrix of Residuals and Parameters', fontsize=16)
+# plot residuals and correlations
+compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
+res_cols = ['res_chioverS'] 
+plot_correlations(res_cols, compare_params)
