@@ -159,6 +159,7 @@ data.rename(columns={'Modulation Freq (kHz)':'mod_freq_kHz',
 					 'Phase Shift C-B (rad)':'phaseshift',
 					 'Phase Shift C-B err (rad)':'phaseshift_err',
 					 }, inplace=True)
+# data['phaseshift'] = data['phaseshift'].apply(lambda x: x+2*pi if x < 0 else x)
 data['tau_from_ps'] = data['phaseshift'] / (2 * pi * data['mod_freq_kHz'] * 1e3) * 1e6  # [us]
 data['tau_from_ps_err'] = 1/(np.cos(data['phaseshift']))**2 * data['phaseshift_err']/ (data['mod_freq_kHz']*1e3) / 2/np.pi * 1e6 # sec^2(x) * \delta x
 data['time_delay'] = contact_time_delay(data['phaseshift'], 1/(data['mod_freq_kHz']*1e3)) * 1e6  # [us]
@@ -231,7 +232,7 @@ data['res_ps'] = data['phaseshift'] - pred_ps
 data['res_tau'] = data['tau_from_ps'] - pred_tau
 data['res_delay'] = data['time_delay'] - pred_delay
 # plot residuals and correlations
-compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
+compare_params = ['ToTF', 'EF_Hz', 'N','mod_freq_kHz', 'T',  'betaomega']
 res_cols = ['res_ps', 'res_tau', 'res_delay'] 
 obs_cols = [('betaomega', 'phaseshift'), ('T', 'tau_from_ps'), ('betaomega','time_delay')] # tuples of (x,y) observables
 thr_cols = [('betaomegas', 'phiLR', 1), ('T', 'tau', 1e6), ('betaomegas','time_delay_LR', 1e6)] # (x, y, scale)
@@ -252,7 +253,7 @@ data['res_dC_kFda0'] = data['dC_kFda0'] - pred_S
 data['res_chioverS'] = data['chioverS'] - pred_chioverS
 
 # plot residuals and correlations
-compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
+compare_params = ['ToTF', 'EF_Hz', 'N','mod_freq_kHz', 'T',  'betaomega']
 res_cols = ['res_chioverS'] 
 obs_cols = [('betaomega', 'chioverS'),] # tuples of (x,y) observables
 thr_cols = [('betaomegas', 'rel_amp', 1),] # (x, y, scale)
