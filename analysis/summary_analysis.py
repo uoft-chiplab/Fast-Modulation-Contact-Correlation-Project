@@ -42,7 +42,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 import seaborn as sns
 
-def plot_correlations(df, res_cols, compare_params, hue_col='HFT_or_dimer'):
+def plot_correlations(df, obs_cols, thr_cols, res_cols, compare_params,  TUGs, hue_col='HFT_or_dimer'):
 	"""
 	Plot residuals and correlations between residuals and various parameters.
 	"""
@@ -50,23 +50,39 @@ def plot_correlations(df, res_cols, compare_params, hue_col='HFT_or_dimer'):
 	sns.set_theme(style="whitegrid")
 
 	# Plot residuals and check for correlations
-	for res_col in res_cols:
-		fig, axes = plt.subplots(1, len(compare_params) + 1, figsize=(18, 5))
+	for i, res_col in enumerate(res_cols):
+		fig, axes = plt.subplots(1, len(compare_params) + 2, figsize=(18, 5))
 		fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
+
+		# first plot the measurements vs predicted
+		obs_x = obs_cols[i][0]
+		obs_y = obs_cols[i][1]
+		axes[0].errorbar(df[obs_x], df[obs_y], 
+				   yerr = [df[obs_y + '_err'] if obs_y + '_err' in df.columns else 0], 
+				   color='grey', marker='o', ls='None', alpha=0.7)
+		thr_x = thr_cols[i][0]
+		thr_y = thr_cols[i][1]
+		thr_scale = thr_cols[i][2]
+		for tug in TUGs:
+			marker = 'o' if thr_x == 'T' else ''
+			axes[0].plot(getattr(tug, thr_x), getattr(tug, thr_y) * thr_scale, ls='-', marker=marker,  alpha=0.3, color='grey')
+		axes[0].set(xlabel = obs_x, ylabel=obs_y)
+
+		# second plot the histogram of residuals
 		sns.histplot(data=df,
 			   x=res_col, 
 			   hue=hue_col, 
 			   kde=True, 
-			   ax=axes[0], 
+			   ax=axes[1], 
 			   element="step", 
 			   color='gray')
-		axes[0].axvline(0, color='red', linestyle='--')
-		axes[0].set_title('Residual Distribution')
-		axes[0].set_xlabel('Residual (Observed - Predicted)')
+		axes[1].axvline(0, color='red', linestyle='--')
+		axes[1].set_title('Residual Distribution')
+		axes[1].set_xlabel('Residual (Observed - Predicted)')
 
 		# Scatter plots of residuals vs parameters
 		for i, param in enumerate(compare_params):
-			ax = axes[i+1]
+			ax = axes[i+2]
 			sns.scatterplot(data=df, 
 				   x=param, 
 				   y=res_col, 
@@ -210,17 +226,16 @@ else:
 pred_ps = [tug.evaluate(row.betaomega, 'phiLR') for tug, row in zip(TUGs, data.itertuples())] # [rad]
 pred_tau = [tug.tau * 1e6 for tug in TUGs] # [us]
 pred_delay = [tug.evaluate(row.betaomega, 'time_delay_LR') * 1e6 for tug, row in zip(TUGs, data.itertuples())] # [us]
-# pred_delay_over_tau = [np.array(pred_delay)/np.array(pred_tau)]
 # dataframe residuals
 data['res_ps'] = data['phaseshift'] - pred_ps
 data['res_tau'] = data['tau_from_ps'] - pred_tau
 data['res_delay'] = data['time_delay'] - pred_delay
-# data['res_delay_over_tau'] = data['time_delay']/data['tau_from_ps'] - pred_delay_over_tau
-
 # plot residuals and correlations
 compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
 res_cols = ['res_ps', 'res_tau', 'res_delay'] 
-plot_correlations(data, res_cols, compare_params)
+obs_cols = [('betaomega', 'phaseshift'), ('T', 'tau_from_ps'), ('betaomega','time_delay')] # tuples of (x,y) observables
+thr_cols = [('betaomegas', 'phiLR', 1), ('T', 'tau', 1e6), ('betaomegas','time_delay_LR', 1e6)] # (x, y, scale)
+plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs)
 
 
 ### COMPUTE RESIDUALS AND CORRELATIONS FOR AMPLITUDES AND CONTACTS
@@ -239,4 +254,6 @@ data['res_chioverS'] = data['chioverS'] - pred_chioverS
 # plot residuals and correlations
 compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
 res_cols = ['res_chioverS'] 
-plot_correlations(data, res_cols, compare_params)
+obs_cols = [('betaomega', 'chioverS'),] # tuples of (x,y) observables
+thr_cols = [('betaomegas', 'rel_amp', 1),] # (x, y, scale)
+plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs)
