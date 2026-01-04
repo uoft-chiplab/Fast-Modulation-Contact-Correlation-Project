@@ -143,6 +143,7 @@ if 'Unnamed: 0' in data.columns:
 	data.rename(columns={'Unnamed: 0':'run'}, inplace=True)
 metadata = pd.read_csv(root_project + os.sep + 'metadata.csv')
 data= data.merge(metadata, on='run')
+print(f"Loaded summary data and metadata with {len(data)} entries.")
 
 # Load field amplitude calibration and merge
 field_cal_df_path = os.path.join(field_cal_folder, "field_cal_summary.csv")
@@ -150,11 +151,13 @@ field_cal_df = pd.read_csv(field_cal_df_path)
 field_cal_df['field_cal_run'] = field_cal_df['run']
 field_cal_df = field_cal_df[['field_cal_run','B_amp']]
 data=pd.merge(data, field_cal_df, on='field_cal_run')
+print(f"Merged field amplitude calibration, total entries now {len(data)}.")
 
 # Process extra derived results
 data['T'] = data['ToTF'] * (data['EF']/h) # T in Hz
 data['EF_Hz'] = (data['EF']/h).round().astype(int) # EF in Hz and rounded
 data['barnu'] = 300 # TODO FIX THIS ESTIMATE; HAVE TO LOOK AT OLD DATA AND REFERENCE
+data['date'] = pd.to_datetime(data['run'].str[:10], format='%Y-%m-%d')
 data.rename(columns={'Modulation Freq (kHz)':'mod_freq_kHz',
 					 'Phase Shift C-B (rad)':'phaseshift',
 					 'Phase Shift C-B err (rad)':'phaseshift_err',
@@ -232,7 +235,7 @@ data['res_ps'] = data['phaseshift'] - pred_ps
 data['res_tau'] = data['tau_from_ps'] - pred_tau
 data['res_delay'] = data['time_delay'] - pred_delay
 # plot residuals and correlations
-compare_params = ['ToTF', 'EF_Hz', 'N','mod_freq_kHz', 'T',  'betaomega']
+compare_params = ['ToTF', 'EF_Hz', 'N','T','mod_freq_kHz', 'B_amp',  'betaomega']
 res_cols = ['res_ps', 'res_tau', 'res_delay'] 
 obs_cols = [('betaomega', 'phaseshift'), ('T', 'tau_from_ps'), ('betaomega','time_delay')] # tuples of (x,y) observables
 thr_cols = [('betaomegas', 'phiLR', 1), ('T', 'tau', 1e6), ('betaomegas','time_delay_LR', 1e6)] # (x, y, scale)
@@ -253,7 +256,7 @@ data['res_dC_kFda0'] = data['dC_kFda0'] - pred_S
 data['res_chioverS'] = data['chioverS'] - pred_chioverS
 
 # plot residuals and correlations
-compare_params = ['ToTF', 'EF_Hz', 'N','mod_freq_kHz', 'T',  'betaomega']
+# compare_params = ['ToTF', 'EF_Hz', 'N','T','mod_freq_kHz', 'B_amp','betaomega']
 res_cols = ['res_chioverS'] 
 obs_cols = [('betaomega', 'chioverS'),] # tuples of (x,y) observables
 thr_cols = [('betaomegas', 'rel_amp', 1),] # (x, y, scale)
