@@ -42,7 +42,7 @@ from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 import seaborn as sns
 
-def plot_correlations(res_cols, compare_params):
+def plot_correlations(df, res_cols, compare_params, hue_col='HFT_or_dimer'):
 	"""
 	Plot residuals and correlations between residuals and various parameters.
 	"""
@@ -53,7 +53,13 @@ def plot_correlations(res_cols, compare_params):
 	for res_col in res_cols:
 		fig, axes = plt.subplots(1, len(compare_params) + 1, figsize=(18, 5))
 		fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
-		sns.histplot(data[res_col], kde=True, ax=axes[0], color='gray')
+		sns.histplot(data=df,
+			   x=res_col, 
+			   hue=hue_col, 
+			   kde=True, 
+			   ax=axes[0], 
+			   element="step", 
+			   color='gray')
 		axes[0].axvline(0, color='red', linestyle='--')
 		axes[0].set_title('Residual Distribution')
 		axes[0].set_xlabel('Residual (Observed - Predicted)')
@@ -61,14 +67,24 @@ def plot_correlations(res_cols, compare_params):
 		# Scatter plots of residuals vs parameters
 		for i, param in enumerate(compare_params):
 			ax = axes[i+1]
-			sns.scatterplot(data=data, x=param, y=res_col, ax=ax, alpha=0.9)
-			
+			sns.scatterplot(data=df, 
+				   x=param, 
+				   y=res_col, 
+				   hue=hue_col,
+				   ax=ax, 
+				alpha=0.9)
 			# Add a horizontal line at 0 for reference
 			ax.axhline(0, color='red', linestyle='--')
 			
 			# Add a trend line (regression) to highlight hidden correlations
-			sns.regplot(data=data, x=param, y=res_col, ax=ax, 
-						scatter=False, color='blue', )
+			for category in df[hue_col].unique():
+				subset = df[df[hue_col] == category]
+				sns.regplot(
+				data=subset, x=param, y=res_col, 
+				ax=ax, label=category,
+				scatter_kws={'alpha': 0.8, 's': 20},
+				line_kws={'lw': 1, 'linestyle': '--'}
+			)
 			
 			ax.set_title(f'Residual vs {param}')
 
@@ -149,14 +165,6 @@ data['dkFa0_inv'] = 1/(data['kF']*a97(B0 - data['B_amp'])) - 1/(data['kF']*a97(B
 data['dC_kFda0'] = 2*data['C_amp']/data['dkFa0_inv'] # dC/d(kF a0)^-1 
 data['dC_kFda0_err'] = 2*data['dC_kFda0']*np.sqrt((data['C_amp_err']/data['C_amp_err'])**2 + (data['eEF']/data['EF'])**2)
 
-# Optional filter for measurement type
-HFTordimer = 'dimer'  # 'HFT' or 'dimer' or None
-if HFTordimer:
-	print(f"!Filtering to only {HFTordimer} data!")
-	data = data[data['HFT_or_dimer']==HFTordimer] # Hmm I get big differences depending on measurement
-else:
-	print("Using all data types (HFT and dimer).")
-
 # List of TrappedUnitaryGas objects pickle file
 pickle_file = cc_folder + os.sep + 'time_delay_TUGs_working.pkl'
 
@@ -212,7 +220,7 @@ data['res_delay'] = data['time_delay'] - pred_delay
 # plot residuals and correlations
 compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
 res_cols = ['res_ps', 'res_tau', 'res_delay'] 
-plot_correlations(res_cols, compare_params)
+plot_correlations(data, res_cols, compare_params)
 
 
 ### COMPUTE RESIDUALS AND CORRELATIONS FOR AMPLITUDES AND CONTACTS
@@ -231,4 +239,4 @@ data['res_chioverS'] = data['chioverS'] - pred_chioverS
 # plot residuals and correlations
 compare_params = ['ToTF', 'EF_Hz', 'mod_freq_kHz', 'T', 'betaomega']
 res_cols = ['res_chioverS'] 
-plot_correlations(res_cols, compare_params)
+plot_correlations(data, res_cols, compare_params)
