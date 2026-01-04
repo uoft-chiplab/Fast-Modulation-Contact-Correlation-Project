@@ -9,7 +9,8 @@
 import numpy as np
 from scipy.integrate import quad
 from scipy.optimize import root_scalar
-
+from scipy.interpolate import interp1d
+from datetime import datetime
 from constants import pi, mK, hbar
 from baryrat import BarycentricRational
 from luttinger_ward_calculations import \
@@ -150,9 +151,10 @@ class BulkViscUniform:
         a0 = self.lambda_T  # Put actual amplitude of scattering length drive, in meters
         self.A = self.lambda_T/a0  # Dimensionless amplitude of drive
         self.nus = nus
+        self.birthday = datetime.now()
         
         betamu = self.mu/self.T
-        betaomegas = self.nus/self.T
+        self.betaomegas = self.nus/self.T
         
         #
         # Compute bulk properties
@@ -161,33 +163,37 @@ class BulkViscUniform:
         f_n, self.Theta, f_p, self.E = thermo_bulk(betamu, self.T)
         self.EF = self.T/self.Theta
         self.Edot = self.A**2*np.array([heating_bulk(self.T,betamu,
-                                        betaomega) for betaomega in betaomegas])
+                                        betaomega) for betaomega in self.betaomegas])
         
         self.C = contact_density(Theta(betamu))
         self.tau = 1/gamma(betamu, self.T)  # Scattering rate.
 
         self.sumrule = betasumrule(betamu) * self.T
         self.EdotbulksC = self.A**2 * np.array([heating_C(self.T, betaomega,
-                    self.C*eos_ufg(betamu)**(4/3)) for betaomega in betaomegas])
+                    self.C*eos_ufg(betamu)**(4/3)) for betaomega in self.betaomegas])
 
-        self.zetas = np.array([zeta(betamu,betaomega) for betaomega in betaomegas])
-        self.zetasC = np.array([zeta_C(betamu,betaomega) for betaomega in betaomegas])  # added for comparison - CD
+        self.zetas = np.array([zeta(betamu,betaomega) for betaomega in self.betaomegas])
+        self.zetasC = np.array([zeta_C(betamu,betaomega) for betaomega in self.betaomegas])  # added for comparison - CD
 
         self.sumruleint = sumruleint(betamu)*self.T
         self.sumruleintC = sumruleintC(betamu, 1)*self.T # using nu=T as the change freq for zeta calc
                                                             # could also use nu=EF by replaced 1 with self.Theta
 
         self.phaseshifts = np.array([phaseshift_Drude(betamu,
-                                    betaomega) for betaomega in betaomegas])
+                                    betaomega) for betaomega in self.betaomegas])
         
         self.phaseshiftsC = np.array([phaseshift_zeta(betaomega*T, zetaC, 
-            self.sumruleintC) for betaomega, zetaC in zip(betaomegas, self.zetasC)])
+            self.sumruleintC) for betaomega, zetaC in zip(self.betaomegas, self.zetasC)])
         
         self.phaseshiftsQcrit = np.arctan(self.nus * self.tau / (1 + (self.nus*self.tau)**2))
 
         self.phiLR = np.arctan(self.nus * self.tau)
 
         self.betamu = betamu
+
+    def __repr__(self):
+        return f"TUG({self.ToTF}, {self.EF}, {self.barnu}) created at {self.birthday.strftime('%Y-%m-%d %H:%M:%S')}"
+    
 
 
 #
@@ -330,7 +336,8 @@ class TrappedUnitaryGas:
         self.barnu = barnu
         self.lambda_T = np.sqrt(hbar/(mK*self.T))  # Thermal wavelength (unit of length, in meters).
         self.betabaromega = barnu/self.T
-        
+        self.birthday = datetime.now()
+
         # Find betamutrap that produces correct ToTF given EF, ToTF and betabaromega.
         self.betamu, _ = find_betamu(self.T, ToTF, self.betabaromega)
 
@@ -358,7 +365,25 @@ class TrappedUnitaryGas:
             print(f"tau={self.tau:.2e}s, Ns={self.Ns:.0f}, Ntotal={2*self.Ns:.0f}, Epot={self.Epot:.0f}Hz.")
             print(f"C={self.C:.2f}kF")
 
+    def __repr__(self):
+        return f"TUG({self.ToTF}, {self.EF}, {self.barnu}) created at {self.birthday.strftime('%Y-%m-%d %H:%M:%S')}"
     
+    def evaluate(self, betaomega, value='phiLR'):
+        """
+        Evaluator for TUG attributes, intended for after calling modulate_field() so self.betaomegas exists
+        """
+        # make sure attribute exists
+        if not hasattr(self, value):
+            raise AttributeError(f"TUG object has no attribute '{value}'")
+        elif not hasattr(self, "betaomegas"):
+            raise AttributeError("TUG object has no attribute 'betaomegas'. Did you call modulate_field()?")
+            
+        data_y = getattr(self, value)
+
+        # interpolate 
+        f = interp1d(self.betaomegas, data_y, kind='linear', fill_value="extrapolate")
+        return float(f(betaomega))
+
     def calc_contact(self, weight_func=weight_harmonic):
         """Calculates the harmonic trap-averaged contact using ToTF, EF, barnu
         (geometric mean trap freq) and an optional guess mu. Returns the contact."""
@@ -389,16 +414,16 @@ class TrappedUnitaryGas:
 
         self.A = self.lambda_T/a0  # Dimensionless amplitude of drive.
         self.nus = nus
-        betaomegas = self.nus/self.T
+        self.betaomegas = self.nus/self.T
               
         # but we have to decide if we want to normalize the trap heating rate by the total or by the internal energy
         self.EdotDrude = self.A**2*np.array([heating_trap(self.T,self.betamu,
-                        betaomega,self.betabaromega) for betaomega in betaomegas])
+                        betaomega,self.betabaromega) for betaomega in self.betaomegas])
         
         self.ns = psd_trap(self.betamu,self.betabaromega)/self.Ns # /self.lambda_T**3
     
-        self.EdotC = self.A**2*np.array([heating_C(self.T,betaomega, self.Ctrap) for betaomega in betaomegas])
-        self.EdotNormC = self.A**2*np.array([heating_C(self.T,betaomega, (self.kF*self.lambda_T)/(3*pi**2)**(1/3)) for betaomega in betaomegas])
+        self.EdotC = self.A**2*np.array([heating_C(self.T,betaomega, self.Ctrap) for betaomega in self.betaomegas])
+        self.EdotNormC = self.A**2*np.array([heating_C(self.T,betaomega, (self.kF*self.lambda_T)/(3*pi**2)**(1/3)) for betaomega in self.betaomegas])
         
         # these were divided by A**4 for some reason when I first saw this code. Why?
         self.zetaDrude = self.EdotDrude/self.A**2 * (self.lambda_T**2*self.kF**2)/(9*pi*nus**2*2*self.Ns)
@@ -408,14 +433,14 @@ class TrappedUnitaryGas:
         
         self.EdotDrudeS = self.EdotDrude / self.sumruletrap
         self.EdotDrudeSalt = self.A**2*np.array([heating_trap_sumrule(self.T,self.betamu, 
-                            betaomega, self.betabaromega) for betaomega in betaomegas])
+                            betaomega, self.betabaromega) for betaomega in self.betaomegas])
         self.phaseshiftsQcrit = np.arctan(self.nus * self.tau / (1 + (self.nus*self.tau)**2))
     
         self.phiLR = np.arctan(2 * np.pi * self.nus * self.tau) # recall tau is 1/2pi
         
         self.EdotSphi = np.array([np.tan(phi)*betaomega*self.T/self.EF * \
                                  9*pi/self.kF**2/self.lambda_T**2 for phi, 
-                                 betaomega in zip(self.phaseshiftsQcrit, betaomegas)])
+                                 betaomega in zip(self.phaseshiftsQcrit, self.betaomegas)])
         
         # Find frequency to change from Drude to contact scaling.
         # Arbitrarily chose this as 2 * T.
@@ -427,7 +452,6 @@ class TrappedUnitaryGas:
         self.zeta = np.append(self.zetaDrude[:nu_small], 
                         self.zetaC[nu_small:])
 
-            
     def calc_Edot(self, nu):
         betaomega = nu/self.T
         if betaomega < 2:

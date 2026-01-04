@@ -11,7 +11,7 @@ import ast
 from cycler import cycler
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.gridspec as gridspec
-plt.rcParams['axes.prop_cycle'] = cycler(color=['hotpink', 'plum'])
+# plt.rcParams['axes.prop_cycle'] = cycler(color=['hotpink', 'plum'])
 
 # automatically read parent dir, assuming pwd is the directory containing this file
 

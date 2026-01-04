@@ -354,14 +354,14 @@ field_to_contact_HFT_cold = lambda B: Linear(B, *popt_fudged)
 Bs_HFT = np.linspace(sus_df['Bfield'].min(), sus_df['Bfield'].max(), 10)
 Cs_HFT = field_to_contact_HFT_cold(Bs_HFT)
 Cs_HFT_unfudged = field_to_contact_HFT_unfudged(Bs_HFT)
-fig2, ax = plt.subplots()
-ax.plot(DCdf['Bfield'], DCdf['contact'], marker='o', ls='', color='orchid', label='DC dimer')
-ax.plot(Bs_d, Cs_d, ls='--', marker='', color='orchid', label='dimer fit')
-ax.errorbar(sus_df['Bfield'], sus_df['fudgedC'], sus_df['e_fudgedC'], marker='P', ls='', color='salmon', label='DC HFT')
-ax.plot(Bs_HFT, Cs_HFT, ls= '--', marker='', color='salmon', label='HFT fudged')
-ax.plot(Bs_HFT, Cs_HFT_unfudged, ls= '--', marker='', color='orange', label='HFT unfudged')
-ax.set(xlabel = 'Bfield [G]', ylabel = r'$\widetilde{C}$', title = r'DC C, $T/T_F \lesssim 0.3$')
-ax.legend()
+# fig2, ax = plt.subplots()
+# ax.plot(DCdf['Bfield'], DCdf['contact'], marker='o', ls='', color='orchid', label='DC dimer')
+# ax.plot(Bs_d, Cs_d, ls='--', marker='', color='orchid', label='dimer fit')
+# ax.errorbar(sus_df['Bfield'], sus_df['fudgedC'], sus_df['e_fudgedC'], marker='P', ls='', color='salmon', label='DC HFT')
+# ax.plot(Bs_HFT, Cs_HFT, ls= '--', marker='', color='salmon', label='HFT fudged')
+# ax.plot(Bs_HFT, Cs_HFT_unfudged, ls= '--', marker='', color='orange', label='HFT unfudged')
+# ax.set(xlabel = 'Bfield [G]', ylabel = r'$\widetilde{C}$', title = r'DC C, $T/T_F \lesssim 0.3$')
+# ax.legend()
 # dirty implementation for hot HFT sus, TODO clean up, want to comebine all temps
 sus_df_hot = pd.read_csv(os.path.join(root_analysis, 'corrections//saturation_HFT_hot.csv'))
 sus_df_hot['HFT_or_dimer']='HFT'
@@ -381,12 +381,7 @@ data=pd.merge(data, field_cal_df, on='field_cal_run')
 
 # from field_cal_run, find field amplitude for each run, then evaluate DC contact and alpha amplitude
 # for 202.14 +/- Bamp. Calculate difference. Call it DC amp.
-# # data['HFT_or_dimer'] = "HFT" # test
-# data['contact_DC_amp'] = np.where(
-# 	data['HFT_or_dimer'] == 'dimer',
-# 	np.abs(field_to_contact_dimer(202.14 - data['B_amp']) - field_to_contact_dimer(202.14 + data['B_amp'])) / 2,
-# 	np.abs(field_to_contact_HFT(202.14 - data['B_amp']) - field_to_contact_HFT(202.14 + data['B_amp'])) / 2,
-# )
+
 data['alpha_DC_amp'] = np.where(
     data['HFT_or_dimer'] == 'dimer',
     np.abs(field_to_alpha_dimer(202.14 - data['B_amp']) - field_to_alpha_dimer(202.14 + data['B_amp'])) / 2,
@@ -511,7 +506,7 @@ B0 = 202.14 # assume avg B is 202.14
 Bamp = data['B_amp']
 dkFa0_inv = 1/(kF*a97(B0 - Bamp)) - 1/(kF*a97(B0 + Bamp)) # max B - min B 
 
-dC_kFda0 = 2*data['contact_AC_amp']/dkFa0_inv # dC/d(kF a0)^-1 
+dC_kFda0 = 2*data['contact_AC_amp']/dkFa0_inv # dC/d(kF a0)^-1 or change in measured contact per change in field/scattering length 
 dCkFda0_err = 2*dC_kFda0*np.sqrt((data['contact_AC_amp_err']/data['contact_AC_amp'])**2 + (data['eEF']/data['EF'])**2)
 
 for x, y, yerr, color, marker in zip(data['ToTF'], Cs, Cerrs, colors_data, markers_data):
@@ -598,14 +593,15 @@ data['chi/S_err'] = data['chi_err']/data['Stheory'] # TODO estimate uncertainty 
 data['chi_rescaled/S'] = data['chi_rescaled'] / data['Stheory']
 data['chi_rescaled/S_err'] = data['chi_rescaled_err']/data['Stheory']
 data['nu/T'] = data['freq']*1000/data['T']
+data['EF_Hz'] = data['EF']/h
 
 # plot data
-
 # something's buggy; data['Modulation ...'] seems to be out of order
 for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['nu/T'], data['chi/S'], data['chi/S_err'], colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):
 	ax[2].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
 for x, y, yerr, color, marker, mod_freq, pulse_type in zip(data['nu/T'], data['chi_rescaled/S'], data['chi_rescaled/S_err'], colors_data, markers_data, data['Modulation Freq (kHz)'], data['HFT_or_dimer']):
 	ax[3].errorbar(x, y, yerr, color=color, marker=marker, mec=darken(color), ls='')
+
 
 # plot theory
 num=20
@@ -627,5 +623,56 @@ ax[3].set(xlim=[0, data['nu/T'].max()+1],
 		  xlabel=r'$h\nu/k_BT$',
 		  ylabel=r'rescaled $\chi/S$')
 ax[2].legend(fontsize=6)
+
+fig.tight_layout()
+
+
+### a large number of alternative ways to plot the amplitude data
+binning_selection = ['EF_Hz', 'ToTF', 'T', 'freq']
+num_bins = 8
+fig, ax = plt.subplots(len(binning_selection),2,
+					   sharex='col', 
+					   sharey='col', 
+					   figsize=(10,8))
+ax[len(binning_selection)-1, 0].set(xlim=[0, data['nu/T'].max()+1],
+		  xlabel=r'$h\nu/k_BT$',
+		  ylabel=r'$\chi/S$')
+
+ax[len(binning_selection)-1, 1].set(xlim=[0, data['nu/T'].max()+1],
+		  xlabel=r'$h\nu/k_BT$',
+		  ylabel=r'rescaled $\chi/S$')
+
+# plot data with different types of filtering
+for i, bin in enumerate(binning_selection):
+	ax[i,0].set_title(f"{binning_selection[i]}, [{data[bin].min():.1f}, {data[bin].max():.1f}]")
+	ax[i,1].set_title(f"{binning_selection[i]}, [{data[bin].min():.1f}, {data[bin].max():.1f}]")
+
+	data['bin_number'] = pd.cut(data[bin], bins=num_bins, labels=False)
+	data['bin'] = pd.cut(data[bin], bins=num_bins)
+	# For plot labels, you might want formatted strings
+	data['midpoint'] = data['bin'].apply(lambda x: (x.left+x.right)/2)
+	
+	# normalize some colors
+	xs = np.linspace(data[bin].min(), data[bin].max(), 10)
+	my_norm = colors.Normalize(vmin = xs.min(), vmax = xs.max())
+	my_cmap = cm.get_cmap('RdYlBu').reversed()
+	for bin_num in data['bin_number'].unique():
+		bindata = data[data['bin_number']==bin_num]
+		color = my_cmap(my_norm(bindata['midpoint'].values[0]))
+		ax[i,0].errorbar(bindata['nu/T'], bindata['chi/S'], bindata['chi/S_err'], color=color)
+		ax[i,1].errorbar(bindata['nu/T'], bindata['chi_rescaled/S'], bindata['chi_rescaled/S_err'], color=color)
+	# plot theory
+	num=20
+	for b, TUG in enumerate(ytugs): # this relies on the fact it was calculated previously
+		ax[i,0].plot(TUG.nus/TUG.T, TUG.rel_amp,':', color=get_color(TUG.T),
+			# label = f'ToTF={TUG.ToTF}, EF={(TUG.T/TUG.ToTF)/10e2:.0f} kHz'
+			)
+		ax[i,1].plot(TUG.nus/TUG.T, TUG.rel_amp,':', color=get_color(TUG.T),
+			# label = f'ToTF={TUG.ToTF}, EF={(TUG.T/TUG.ToTF)/10e2:.0f} kHz'
+			)
+		
+	# ax[i,0].legend()
+	# ax[i,1].legend()
+
 
 fig.tight_layout()
