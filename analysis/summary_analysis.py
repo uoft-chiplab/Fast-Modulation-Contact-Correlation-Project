@@ -48,12 +48,18 @@ def plot_correlations(df, obs_cols, thr_cols, res_cols, compare_params,  TUGs, h
 	"""
 	# Set the visual style
 	sns.set_theme(style="whitegrid")
+	fixed_plot_num = 3
 
-	# Plot residuals and check for correlations
+    # Plot residuals and check for correlations
 	for i, res_col in enumerate(res_cols):
-		fig, axes = plt.subplots(1, len(compare_params) + 2, figsize=(18, 5))
-		fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
+        # Calculate grid dimensions
+		total_plots = len(compare_params) + fixed_plot_num
+		n_cols = (len(compare_params) + fixed_plot_num) // 3  # Half the number of columns
+		n_rows = (total_plots + n_cols - 1) // n_cols  # Ceiling division
 
+		fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols*4, 4 * n_rows))
+		axes = axes.flatten()  # Flatten to 1D array for easier indexing
+ 
 		# first plot the measurements vs predicted
 		obs_x = obs_cols[i][0]
 		obs_y = obs_cols[i][1]
@@ -69,45 +75,83 @@ def plot_correlations(df, obs_cols, thr_cols, res_cols, compare_params,  TUGs, h
 		axes[0].set(xlabel = obs_x, ylabel=obs_y)
 
 		# second plot the histogram of residuals
-		sns.histplot(data=df,
-			   x=res_col, 
-			   hue=hue_col, 
-			   kde=True, 
-			   ax=axes[1], 
-			   element="step", 
-			   color='gray')
+		plot_params = {
+			"data": df,
+			"x": res_col,
+			"kde": True,
+			"ax": axes[1],
+			"element": "step"
+		}
+		if hue_col:
+			plot_params["hue"] = hue_col
+		sns.histplot(**plot_params)
 		axes[1].axvline(0, color='red', linestyle='--')
 		axes[1].set_title('Residual Distribution')
-		axes[1].set_xlabel('Residual (Observed - Predicted)')
+
+		# third plot residuals over time
+		axes[2].scatter(df['date'], df[res_col], alpha=0.9)
+		axes[2].axhline(0, color='red', linestyle='--')
+		axes[2].set(xlabel = 'Date', ylabel=res_col)
 
 		# Scatter plots of residuals vs parameters
 		for i, param in enumerate(compare_params):
-			ax = axes[i+2]
-			sns.scatterplot(data=df, 
-				   x=param, 
-				   y=res_col, 
-				   hue=hue_col,
-				   ax=ax, 
-				alpha=0.9)
+			ax = axes[i+fixed_plot_num]
+			plot_params = {
+				"data": df,
+				"x": param,
+				"y": res_col,
+				"ax": ax,
+				"alpha":0.9,
+				"legend":False,
+			}
+			if hue_col:
+				plot_params["hue"] = hue_col
+			sns.scatterplot(**plot_params)
 			# Add a horizontal line at 0 for reference
 			ax.axhline(0, color='red', linestyle='--')
 			
 			# Add a trend line (regression) to highlight hidden correlations
-			for category in df[hue_col].unique():
-				subset = df[df[hue_col] == category]
-				sns.regplot(
-				data=subset, x=param, y=res_col, 
-				ax=ax, label=category,
-				scatter_kws={'alpha': 0.8, 's': 20},
-				line_kws={'lw': 1, 'linestyle': '--'}
+			if hue_col:
+				for category in df[hue_col].unique():
+					subset = df[df[hue_col] == category]
+					sns.regplot(
+					data=subset, x=param, y=res_col, 
+					ax=ax, label=category,
+					# scatter_kws={'alpha': 0.8, 's': 20},
+					scatter=False,
+					marker='',
+					line_kws={'lw': 0.5, 'linestyle': ':', 
+				  'alpha': 0.7
+				  }
 			)
-			
-			ax.set_title(f'Residual vs {param}')
+			else: # bad repeated code
+				sns.regplot(
+				data=df, x=param, y=res_col, 
+				ax=ax,
+				scatter=False,
+				marker='',
+				line_kws={'lw': 0.5, 'linestyle': ':', 
+			  'alpha': 0.7
+			  }
+			)
 
+			ax.set_title(f'Residual vs {param}')
+		       
+        # Hide any unused subplots
+		for idx in range(total_plots, len(axes)):
+			axes[idx].set_visible(False)
+		fig.suptitle(f'Residual analysis for {res_col}', fontsize=16)
+		handles, labels = axes[2].get_legend_handles_labels()
+		fig.legend(handles, labels, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+		fig.tight_layout(rect=[0, 0, 1, 0.96], 
+				#    h_pad=3, w_pad=3
+				   )
 	# Compute correlation coefficients and heat map
 	corr_matrix = data[res_cols + compare_params].corr()
+	# Slice the matrix to get only res_cols vs compare_params
+	subset_corr = corr_matrix.loc[res_cols, :]
 	plt.figure(figsize=(8, 6))
-	sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', center=0)
+	sns.heatmap(subset_corr, annot=True, fmt=".2f", cmap='coolwarm', center=0)
 	plt.title('Correlation Matrix of Residuals and Parameters', fontsize=16)
 
 def contact_time_delay(phi, period):
@@ -135,6 +179,8 @@ def create_TUG(ToTF, EF, barnu, num=50):
 	TUG.time_delay = contact_time_delay(TUG.phaseshiftsQcrit, 1/TUG.nus)
 	TUG.time_delay_LR = contact_time_delay(TUG.phiLR, 1/TUG.nus)
 	TUG.rel_amp = 1/(np.sqrt(1+(2*pi*TUG.nus*TUG.tau)**2))
+	# fugacity
+	TUG.mu = TUG.betamu * TUG.T
 	return TUG
 
 # Load summary data, metadata and merge
@@ -225,7 +271,6 @@ else:
 	print("No new TUGs created; pickle file remains unchanged.")
 
 ### COMPUTE RESIDUALS AND CORRELATIONS FOR PHASE SHIFTS AND TIME DELAYS
-
 # predicted values from TUGs
 pred_ps = [tug.evaluate(row.betaomega, 'phiLR') for tug, row in zip(TUGs, data.itertuples())] # [rad]
 pred_tau = [tug.tau * 1e6 for tug in TUGs] # [us]
@@ -236,10 +281,16 @@ data['res_tau'] = data['tau_from_ps'] - pred_tau
 data['res_delay'] = data['time_delay'] - pred_delay
 # plot residuals and correlations
 compare_params = ['ToTF', 'EF_Hz', 'N','T','mod_freq_kHz', 'B_amp',  'betaomega']
+params_from_tug = ['betamu','mu']
+if params_from_tug:
+	for param in params_from_tug:
+		data[param] = [getattr(tug, param) for tug in TUGs]
+		compare_params.append(param)
 res_cols = ['res_ps', 'res_tau', 'res_delay'] 
 obs_cols = [('betaomega', 'phaseshift'), ('T', 'tau_from_ps'), ('betaomega','time_delay')] # tuples of (x,y) observables
 thr_cols = [('betaomegas', 'phiLR', 1), ('T', 'tau', 1e6), ('betaomegas','time_delay_LR', 1e6)] # (x, y, scale)
-plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs)
+hue_col = 'HFT_or_dimer'
+plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs, hue_col=hue_col)
 
 
 ### COMPUTE RESIDUALS AND CORRELATIONS FOR AMPLITUDES AND CONTACTS
@@ -250,6 +301,8 @@ pred_chioverS = [tug.evaluate(row.betaomega, 'rel_amp') for tug, row in zip(TUGs
 # Using theory to compute S, data for chi
 data['theoryS'] = pred_S
 data['chioverS'] = data['dC_kFda0'] / data['theoryS']
+# data['chioverS'] = data[data['chioverS'] > 0.3]['chioverS']
+
 # dataframe residuals
 data['res_Ceq'] = data['Ceq'] - pred_Ctrap
 data['res_dC_kFda0'] = data['dC_kFda0'] - pred_S
@@ -260,4 +313,4 @@ data['res_chioverS'] = data['chioverS'] - pred_chioverS
 res_cols = ['res_chioverS'] 
 obs_cols = [('betaomega', 'chioverS'),] # tuples of (x,y) observables
 thr_cols = [('betaomegas', 'rel_amp', 1),] # (x, y, scale)
-plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs)
+plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs, hue_col=hue_col)
