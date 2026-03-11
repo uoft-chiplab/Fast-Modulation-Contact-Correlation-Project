@@ -213,8 +213,22 @@ dCdkFainvhigh = 1.56 + 0.23
 scalesus_errorband = 0.23/1.56
 scalesuslow = dCdkFainvlow/(18*pi) # dimensionless scale sus
 scalesushigh = dCdkFainvhigh/(18*pi)
-dCdkFainv = 1.56
-scalesus = dCdkFainv/(18*pi)
+# dCdkFainv = 1.56
+# This update uses scale sus calculated from tabulated values of C vs kFainv from Tilman.
+# The TUGs were actually calculated in analysis/summary_analysis.py in the context of phase shift and amplitude measurements.
+load_pickle_file = True
+pickle_file = r'E:\Analysis Scripts\Fast-Modulation-Contact-Correlation-Project\time_delay_TUGs_working.pkl' # very bad
+### Load or create TUG objects
+if os.path.exists(pickle_file) and load_pickle_file:
+	with open(pickle_file, 'rb') as f:
+		TUGs = pickle.load(f)
+	print(f"Loaded {len(TUGs)} TUGs from pickle file.")
+
+ToTFs = np.array([tug.ToTF for tug in TUGs])
+dCdkFainvs = np.array([tug.dCdkFa_inv for tug in TUGs])
+ScaleSus_ToTF = lambda x: np.interp(x, ToTFs, dCdkFainvs/(18*pi))
+dCdkFainv_ToTF = lambda x: np.interp(x, ToTFs, dCdkFainvs)
+# scalesus = dCdkFainv/(18*pi)
 
 ### Heating rate measurements
 loops = len(param_sets) # to count over to pull the right theory curve if loading
@@ -232,7 +246,7 @@ for param_set, color, marker, i in zip(param_sets, colors, markers, range(loops)
 	
 	print(df.head())
 	xx = np.array(df.freq)
-	yy = np.array(df.rate)
+	yy = np.array(df.rate) # these heating rates are already normalized by (EF*A)**2
 	yerr = np.array(df.e_rate)
 	Ei = np.array(df.Ei)
 	EF = np.array(df.EF)
@@ -240,13 +254,15 @@ for param_set, color, marker, i in zip(param_sets, colors, markers, range(loops)
 	T = np.array(df["T"]) # T is a terrible column name
 	lambda_T = deBroglie(T*1000*h/kB)
 	ToTF = np.array(df.ToTF)
+	this_ScaleSus = ScaleSus_ToTF(ToTF)
+	this_dCdkFainv = dCdkFainv_ToTF(ToTF)
 	zetas = np.array(df.zeta)
 	e_zetas = np.array(df.e_zeta) # just scales with the other params in the same way
 # 	Cas = np.array(df.Ca)
 # 	As = np.array(df.A)
 # 	adbsinphi = 4*pi*yy/xx/EF/As/Cas * EF**2*As**2 # heating rate yy is already normalized by (EF*A)**2, have to remove it
 
-	phis = np.arctan(2*kF**2*lambda_T**2*yy/xx*EF/dCdkFainv)
+	phis = np.arctan(2*kF**2*lambda_T**2*yy/xx*EF/this_dCdkFainv)
 
 	mean_df = df.groupby('filename').mean(numeric_only=True) # had to do this for pandas 2.1.1
 	barnu = float((mean_df.wx.mean()*mean_df.mean().wy*mean_df.wz.mean())**(1/3))
@@ -278,7 +294,7 @@ for param_set, color, marker, i in zip(param_sets, colors, markers, range(loops)
 	ax_zeta.errorbar(xx/EF, zetas, yerr=e_zetas, fmt=marker)
 	
 	# Edot over Scale sus
-	ax_EdotSus.errorbar(xx/EF, yy/scalesus, yerr=yerr/scalesus, fmt=marker)
+	ax_EdotSus.errorbar(xx/EF, yy/this_ScaleSus, yerr=yerr/this_ScaleSus, fmt=marker)
 	# Edot over Contact
 	Cmeas = 0.78 # hard-coded...
 	ax_EdotCon.errorbar(xx/EF, yy/Cmeas, yerr=yerr/Cmeas, capsize=0, fmt=marker, 
@@ -312,7 +328,7 @@ for param_set, color, marker, i in zip(param_sets, colors, markers, range(loops)
 # 	sumrule = dCdkFainv/(18*pi)
 # 	print(sumrule)
 	
-	Edotnorm = (2*BVT.Ns) * (BVT.EF**2)
+	Edotnorm = (2*BVT.Ns) * (BVT.EF**2) # the theory calculates heating rate with A**2 = 1 so that's why A**2 is missing here
 
 	# plot Drude form if small frequencies exist
 	if load_theory == False: print('plot Drude')
@@ -327,10 +343,14 @@ for param_set, color, marker, i in zip(param_sets, colors, markers, range(loops)
 			  BVT.zetaDrude[:nu_small]*(1 + error_band), alpha=band_alpha, color=color)
 		
         # BVT.Edottraposcalesus
+		# plot_param = BVT.EdotSphi[:nu_small]
+		BVT.scalesus = ScaleSus_ToTF(BVT.ToTF)
+		plot_param = Edots[:nu_small] / BVT.scalesus
+		ax_EdotSus.plot(nusoEF[:nu_small], plot_param, ':', color=color, label=label_Drude)
 		plot_param = BVT.EdotSphi[:nu_small]
 		ax_EdotSus.plot(nusoEF[:nu_small], plot_param, ':', color=color, label=label_Drude)
-		ax_EdotSus.fill_between(nusoEF[:nu_small], plot_param*(1 - 0.2), 
-					plot_param*(1 + 0.2), alpha=band_alpha, color=color)
+		# ax_EdotSus.fill_between(nusoEF[:nu_small], plot_param*(1 - 0.2), 
+		# 			plot_param*(1 + 0.2), alpha=band_alpha, color=color)
 
 	# plot contact determined lines if large frequencies exist
 	if load_theory == False: print('plot contact')

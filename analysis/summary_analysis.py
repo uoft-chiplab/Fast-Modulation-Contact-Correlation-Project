@@ -297,6 +297,7 @@ plot_correlations(data, obs_cols, thr_cols, res_cols, compare_params, TUGs, hue_
 # predicted values from TUGs
 pred_Ctrap =[tug.Ctrap for tug in TUGs] # dimensionless, <Ceq>
 pred_S = [tug.dCdkFa_inv for tug in TUGs] # scale sus
+# self.dCdkFa_inv = 18*pi * integral / (2*self.Ns)
 pred_chioverS = [tug.evaluate(row.betaomega, 'rel_amp') for tug, row in zip(TUGs, data.itertuples())] # chi / S
 # Using theory to compute S, data for chi
 data['theoryS'] = pred_S

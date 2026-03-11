@@ -185,9 +185,9 @@ class BulkViscUniform:
         self.phaseshiftsC = np.array([phaseshift_zeta(betaomega*T, zetaC, 
             self.sumruleintC) for betaomega, zetaC in zip(self.betaomegas, self.zetasC)])
         
-        self.phaseshiftsQcrit = np.arctan(2*np.pi*self.nus * self.tau / (1 + (2*np.pi*self.nus*self.tau)**2))
+        self.phaseshiftsQcrit = np.arctan(self.nus * self.tau / (1 + (self.nus*self.tau)**2))
 
-        self.phiLR = np.arctan(2*np.pi*self.nus * self.tau)
+        self.phiLR = np.arctan(self.nus * self.tau)
 
         self.betamu = betamu
 
@@ -434,7 +434,7 @@ class TrappedUnitaryGas:
         self.EdotDrudeS = self.EdotDrude / self.sumruletrap
         self.EdotDrudeSalt = self.A**2*np.array([heating_trap_sumrule(self.T,self.betamu, 
                             betaomega, self.betabaromega) for betaomega in self.betaomegas])
-        self.phaseshiftsQcrit = np.arctan(2*np.pi*self.nus * self.tau / (1 + (2*np.pi*self.nus*self.tau)**2))
+        self.phaseshiftsQcrit = np.arctan(self.nus * self.tau / (1 + (self.nus*self.tau)**2))
     
         self.phiLR = np.arctan(2 * np.pi * self.nus * self.tau) # recall tau is 1/2pi
         
