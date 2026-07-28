@@ -9,7 +9,7 @@ Relies on data_class.py, library.py, and bulkvisctrap_class.py
 """
 from data_class import Data
 from library import colors, markers, plt_settings, tintshade, tint_shade_color
-from contact_correlations.UFG_analysis import BulkViscTrap
+from analysis.UFG_analysis import BulkViscTrap
 from itertools import chain
 from matplotlib import cm
 from scipy.optimize import curve_fit
