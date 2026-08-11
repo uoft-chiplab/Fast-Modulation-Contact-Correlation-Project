@@ -75,14 +75,14 @@ def Bamp_from_Vpp(Vpp, freq):
 	return Bamp, e_Bamp
 
 
-def a_amp_from_Vpp(Vpp, freq):
+def a_amp_from_Vpp(B_eq, Vpp, freq):
     """
     Calculate the scattering length amplitude (a_amp) from the voltage peak-to-peak (Vpp) and frequency (freq).
     This function uses the Bamp_from_Vpp function to get the magnetic field amplitude (Bamp) 
-    and then calculates the scattering length using the scattering_length function.
+	and then calculates the scattering length using the scattering_length function.
     """
     Bamp, e_Bamp = Bamp_from_Vpp(Vpp, freq)
-    a_amp = scattering_length(B0_97 + Bamp, B0_97, DeltaB_97, abg_97)
+    a_amp = scattering_length(B_eq + Bamp, B0_97, DeltaB_97, abg_97)
 
     return a_amp
 
