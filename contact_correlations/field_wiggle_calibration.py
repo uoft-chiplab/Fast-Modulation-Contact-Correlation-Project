@@ -6,7 +6,18 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
-import os
+import os, sys
+from pathlib import Path
+
+
+script_dir = Path.cwd()
+parent_dir = script_dir.parent
+
+if str(parent_dir) not in sys.path:
+    sys.path.append(str(parent_dir))
+
+from analysis.constants import mK, abg_97, DeltaB_97, B0_97
+from analysis.resonant_scattering import scattering_length
 
 def exponential(x, a, b, c):
 	return a*(1-np.exp(x/b))+c
@@ -59,9 +70,21 @@ def Bamp_from_Vpp(Vpp, freq):
 	''' Returns Bamp and e_Bamp in an array '''
 	Bamp = linear(Vpp, *popt_amp)/linear(0.9, *popt_amp) * exponential(freq, *popt_freq)
 	# the below is wrong
-	e_Bamp = Bamp*0.00 # 0.07 average error ratio for the measurements, 
+	e_Bamp = Bamp * 0.00 # 0.07 average error ratio for the measurements, 
 						# i.e. average error bar size
 	return Bamp, e_Bamp
+
+
+def a_amp_from_Vpp(Vpp, freq):
+    """
+    Calculate the scattering length amplitude (a_amp) from the voltage peak-to-peak (Vpp) and frequency (freq).
+    This function uses the Bamp_from_Vpp function to get the magnetic field amplitude (Bamp) 
+    and then calculates the scattering length using the scattering_length function.
+    """
+    Bamp, e_Bamp = Bamp_from_Vpp(Vpp, freq)
+    a_amp = scattering_length(B0_97 + Bamp, B0_97, DeltaB_97, abg_97)
+
+    return a_amp
 
 
 ###
