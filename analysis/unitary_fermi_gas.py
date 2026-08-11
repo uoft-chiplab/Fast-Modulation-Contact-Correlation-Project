@@ -103,7 +103,7 @@ def heating_from_zeta(T, betamu, betaomega, zeta):
 
 
 def heating_C(T, betaomega, C):
-    """compute heating rate at high frequency from contact density.
+    """Compute heating rate at high frequency from contact density.
     Contact is just the integrated contact density without prefactors."""
     pifactors = (3*pi**2)**(1/3)/(36*pi*(2*pi)**(3/2))
     Edot_C = 9*pi*(T*betaomega)**2/(betaomega)**(3/2) * pifactors * C
@@ -251,6 +251,14 @@ def heating_trap(T, betamu, betaomega, betabaromega, weight_func=weight_harmonic
     return Edot 
 
 
+def heating_Ctrap(T, betaomega, Ctrap_prime):
+    """Compute heating rate at high frequency from trap-averaged contact.
+    Here, the contact is C * kF * lambda_T * 2*Ns"""
+    pifactors = 1/(36*pi*(2*pi)**(3/2))
+    Edot_C = 9*pi*(T*betaomega)**2/(betaomega)**(3/2) * pifactors * Ctrap_prime
+    return Edot_C
+
+
 # unused; this gives weird results
 def heating_trap_sumrule(T, betamu, betaomega, betabaromega, weight_func=weight_harmonic):
     """compute viscous heating rate E-dot averaged over the trap normalized by scale sus"""
@@ -365,9 +373,11 @@ class TrappedUnitaryGas:
             print(f"tau={self.tau:.2e}s, Ns={self.Ns:.0f}, Ntotal={2*self.Ns:.0f}, Epot={self.Epot:.0f}Hz.")
             print(f"C={self.C:.2f}kF")
 
+
     def __repr__(self):
         return f"TUG({self.ToTF}, {self.EF}, {self.barnu}) created at {self.birthday.strftime('%Y-%m-%d %H:%M:%S')}"
     
+
     def evaluate(self, betaomega, value='phiLR'):
         """
         Evaluator for TUG attributes, intended for after calling modulate_field() so self.betaomegas exists
@@ -383,6 +393,7 @@ class TrappedUnitaryGas:
         # interpolate 
         f = interp1d(self.betaomegas, data_y, kind='linear', fill_value="extrapolate")
         return float(f(betaomega))
+
 
     def calc_contact(self, weight_func=weight_harmonic):
         """Calculates the harmonic trap-averaged contact using ToTF, EF, barnu
@@ -422,8 +433,9 @@ class TrappedUnitaryGas:
         
         self.ns = psd_trap(self.betamu,self.betabaromega)/self.Ns # /self.lambda_T**3
     
-        self.EdotC = self.A**2*np.array([heating_C(self.T,betaomega, self.Ctrap) for betaomega in self.betaomegas])
-        self.EdotNormC = self.A**2*np.array([heating_C(self.T,betaomega, (self.kF*self.lambda_T)/(3*pi**2)**(1/3)) for betaomega in self.betaomegas])
+        self.Ctrap_prime = self.Ctrap * 2*self.Ns * self.kF * self.lambda_T 
+
+        self.EdotC = self.A**2 * np.array([heating_C(self.T,betaomega, self.Ctrap_prime) for betaomega in self.betaomegas])
         
         # these were divided by A**4 for some reason when I first saw this code. Why?
         self.zetaDrude = self.EdotDrude/self.A**2 * (self.lambda_T**2*self.kF**2)/(9*pi*nus**2*2*self.Ns)
@@ -448,7 +460,7 @@ class TrappedUnitaryGas:
     
         # Lists for plotting
         self.Edot = np.append(self.EdotDrude[:nu_small],
-                          self.EdotC[nu_small:])/(2*self.Ns * self.EF**2)
+                          self.EdotC[nu_small:])/(2*self.Ns)
         self.zeta = np.append(self.zetaDrude[:nu_small], 
                         self.zetaC[nu_small:])
 
@@ -458,9 +470,9 @@ class TrappedUnitaryGas:
             Edot = self.A**2 * heating_trap(self.T, self.betamu,
                             betaomega, self.betabaromega)
         else:
-            Edot = self.A**2*heating_C(self.T,betaomega, 
-                  C_trap_int(self.betamu, self.betabaromega))
-        return Edot/(2*self.Ns * self.EF**2)
+            Edot = self.A**2 * heating_Ctrap(self.T, betaomega, self.Ctrap_prime)
+
+        return Edot/(2*self.Ns)
     
     def calc_zeta(self, nu):
         # Check this, it might not be right.
