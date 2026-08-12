@@ -88,8 +88,8 @@ def thermo_bulk(betamu, T): # Had to add T as an argument here - CD
     return f_n,theta,f_p,Ebulk
 
 
-def heating_bulk(T, betamu, betaomega):
-    """Compute viscous heating rate E-dot in homogeneous system."""
+def heating_drude(T, betamu, betaomega):
+    """Compute viscous heating rate E-dot in homogeneous system using the Drude form."""
     Zbulk = eos_ufg(betamu)**(1/3)*zeta(betamu,betaomega)
     Edot = 9*np.pi*(T*betaomega)**2/(3*np.pi**2)**(2/3)*Zbulk
     return Edot
@@ -102,26 +102,25 @@ def heating_from_zeta(T, betamu, betaomega, zeta):
     return Edot
 
 
-def heating_C(T, betaomega, C):
-    """Compute heating rate at high frequency from contact density.
-    Contact is just the integrated contact density without prefactors."""
+def heating_contact(T, betaomega, C):
+    """Compute heating rate at high frequency from contact density."""
     pifactors = (3*pi**2)**(1/3)/(36*pi*(2*pi)**(3/2))
     Edot_C = 9*pi*(T*betaomega)**2/(betaomega)**(3/2) * pifactors * C
     return Edot_C
 
 
-def zeta_C(betamu, betaomega):
+def zeta_contact(betamu, betaomega):
     """Compute heating rate at high frequency from contact density."""
     pifactors = 3*pi**2/(36*pi*(2*pi)**(3/2))
     zetaC = pifactors * eos_ufg(betamu) * contact_density(Theta(betamu)) / (betaomega)**(3/2)
     return zetaC
 
 
-def sumruleintC(betamu, Theta):
+def sumruleint_contact(betamu, Theta):
     """Sumrule in temperature units from integral of zeta over betaomega, but using
     zeta from contact for omega > T, i.e. betaomega > 1, if Theta=1, or 
     omega > EF, i.e. betaomega > 1/Theta if Theta=Theta."""
-    integrand = lambda x: np.piecewise(x, [x<(1/Theta), x>=(1/Theta)], [zeta(betamu, x), zeta_C(betamu, x)])
+    integrand = lambda x: np.piecewise(x, [x<(1/Theta), x>=(1/Theta)], [zeta(betamu, x), zeta_contact(betamu, x)])
     integral, int_err = quad(integrand,0,np.inf,epsrel=1e-4)
     sumruleT = 2/pi*integral
     return sumruleT
@@ -144,57 +143,54 @@ class BulkViscUniform:
     """Object to compute quantities in a uniform density unitary Fermi gas. 
     All energies, temperatures and frequencies are in Hz (no 2pi)."""
     
-    def __init__(self, T, mu, nus):
+    def __init__(self, T, mu):
         self.T = T
         self.mu = mu
+        self.betamu = self.mu/self.T
+        betamu = self.betamu
+
         self.lambda_T = np.sqrt(hbar/(mK*T))  # Thermal wavelength (unit of length, in meters)
-        a0 = self.lambda_T  # Put actual amplitude of scattering length drive, in meters
-        self.A = self.lambda_T/a0  # Dimensionless amplitude of drive
-        self.nus = nus
         self.birthday = datetime.now()
-        
-        betamu = self.mu/self.T
-        self.betaomegas = self.nus/self.T
-        
-        #
-        # Compute bulk properties
-        #
-        
+
         f_n, self.Theta, f_p, self.E = thermo_bulk(betamu, self.T)
         self.EF = self.T/self.Theta
-        self.Edot = self.A**2*np.array([heating_bulk(self.T,betamu,
-                                        betaomega) for betaomega in self.betaomegas])
-        
-        self.C = contact_density(Theta(betamu))
-        self.tau = 1/gamma(betamu, self.T)  # Scattering rate.
+        self.C = contact_density(self.Theta)
+        self.tau = 1/gamma(betamu, self.T) 
 
-        self.sumrule = betasumrule(betamu) * self.T
-        self.EdotbulksC = self.A**2 * np.array([heating_C(self.T, betaomega,
-                    self.C*eos_ufg(betamu)**(4/3)) for betaomega in self.betaomegas])
-
-        self.zetas = np.array([zeta(betamu,betaomega) for betaomega in self.betaomegas])
-        self.zetasC = np.array([zeta_C(betamu,betaomega) for betaomega in self.betaomegas])  # added for comparison - CD
-
-        self.sumruleint = sumruleint(betamu)*self.T
-        self.sumruleintC = sumruleintC(betamu, 1)*self.T # using nu=T as the change freq for zeta calc
-                                                            # could also use nu=EF by replaced 1 with self.Theta
-
-        self.phaseshifts = np.array([phaseshift_Drude(betamu,
-                                    betaomega) for betaomega in self.betaomegas])
-        
-        self.phaseshiftsC = np.array([phaseshift_zeta(betaomega*T, zetaC, 
-            self.sumruleintC) for betaomega, zetaC in zip(self.betaomegas, self.zetasC)])
-        
-        self.phaseshiftsQcrit = np.arctan(2*np.pi*self.nus * self.tau / (1 + (2*np.pi*self.nus*self.tau)**2))
-
-        self.phiLR = np.arctan(2*np.pi*self.nus * self.tau)
-
-        self.betamu = betamu
 
     def __repr__(self):
         return f"TUG({self.ToTF}, {self.EF}, {self.barnu}) created at {self.birthday.strftime('%Y-%m-%d %H:%M:%S')}"
     
+    def modulate_field(self, nus, a0=None):
+        betaomegas = nus/self.T
 
+        if a0 is None:  # Then set it s.t. the dimless amp, A, is just 1.
+            a0 = self.lambda_T
+        self.A = self.lambda_T/a0  # Dimensionless amplitude of drive
+
+        self.Edot = self.A**2 * np.array([heating_drude(self.T, self.betamu,
+                                        betaomega) for betaomega in betaomegas])
+        
+        self.sumrule = betasumrule(self.betamu) * self.T
+        self.EdotC = self.A**2 * np.array([heating_contact(self.T, betaomega,
+                    self.C*eos_ufg(self.betamu)**(4/3)) for betaomega in betaomegas])
+
+        self.zetas = np.array([zeta(self.betamu,betaomega) for betaomega in betaomegas])
+        self.zetasC = np.array([zeta_contact(self.betamu,betaomega) for betaomega in betaomegas])  # added for comparison - CD
+
+        self.sumruleint = sumruleint(self.betamu)*self.T
+        self.sumruleintC = sumruleint_contact(self.betamu, 1)*self.T # using nu=T as the change freq for zeta calc
+                                                            # could also use nu=EF by replaced 1 with self.Theta
+
+        self.phaseshifts = np.array([phaseshift_Drude(self.betamu,
+                                    betaomega) for betaomega in betaomegas])
+        
+        self.phaseshiftsC = np.array([phaseshift_zeta(betaomega*T, zetaC, 
+            self.sumruleintC) for betaomega, zetaC in zip(betaomegas, self.zetasC)])
+        
+        self.phaseshiftsQcrit = np.arctan(2*np.pi * nus * self.tau / (1 + (2*np.pi * nus * self.tau)**2))
+
+        self.phiLR = np.arctan(2*np.pi * nus * self.tau)
 
 #
 # trapped gas
@@ -243,7 +239,7 @@ def thermo_trap(T, betamu, betabaromega, weight_func=weight_harmonic):
     return Ns, EF, Theta, Epot
 
 
-def heating_trap(T, betamu, betaomega, betabaromega, weight_func=weight_harmonic):
+def heating_trap_drude(T, betamu, betaomega, betabaromega, weight_func=weight_harmonic):
     """Compute viscous heating rate E-dot averaged over the trap."""
     Ztrap, Ztraperr = quad(lambda v: weight_func(v,
                betabaromega) * eos_ufg(betamu-v)**(1/3) * zeta(betamu-v, betaomega), 0, np.inf, epsrel=1e-4)
@@ -251,7 +247,7 @@ def heating_trap(T, betamu, betaomega, betabaromega, weight_func=weight_harmonic
     return Edot 
 
 
-def heating_Ctrap(T, betaomega, Ctrap_prime):
+def heating_trap_contact(T, betaomega, Ctrap_prime):
     """Compute heating rate at high frequency from trap-averaged contact.
     Here, the contact is C * kF * lambda_T * 2*Ns"""
     pifactors = 1/(36*pi*(2*pi)**(3/2))
@@ -396,8 +392,7 @@ class TrappedUnitaryGas:
 
 
     def calc_contact(self, weight_func=weight_harmonic):
-        """Calculates the harmonic trap-averaged contact using ToTF, EF, barnu
-        (geometric mean trap freq) and an optional guess mu. Returns the contact."""
+        """Calculates the harmonic trap-averaged contact."""
         integral, _ = quad(lambda v: weight_func(v, self.betabaromega) \
                            *eos_ufg(self.betamu-v)**(4/3) \
                             *contact_density(Theta(self.betamu-v)), 0, np.inf, epsrel=eps)
@@ -428,14 +423,14 @@ class TrappedUnitaryGas:
         self.betaomegas = self.nus/self.T
               
         # but we have to decide if we want to normalize the trap heating rate by the total or by the internal energy
-        self.EdotDrude = self.A**2*np.array([heating_trap(self.T,self.betamu,
-                        betaomega,self.betabaromega) for betaomega in self.betaomegas])
+        self.Edot = self.A**2*np.array([heating_trap_drude(self.T, self.betamu,
+                        betaomega, self.betabaromega) for betaomega in self.betaomegas])
         
         self.ns = psd_trap(self.betamu,self.betabaromega)/self.Ns # /self.lambda_T**3
     
         self.Ctrap_prime = self.Ctrap * 2*self.Ns * self.kF * self.lambda_T 
 
-        self.EdotC = self.A**2 * np.array([heating_C(self.T,betaomega, self.Ctrap_prime) for betaomega in self.betaomegas])
+        self.EdotC = self.A**2 * np.array([heating_trap_contact(self.T, betaomega, self.Ctrap_prime) for betaomega in self.betaomegas])
         
         # these were divided by A**4 for some reason when I first saw this code. Why?
         self.zetaDrude = self.EdotDrude/self.A**2 * (self.lambda_T**2*self.kF**2)/(9*pi*nus**2*2*self.Ns)
