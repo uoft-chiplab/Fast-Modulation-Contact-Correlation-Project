@@ -355,9 +355,12 @@ class TrappedUnitaryGas:
     def calc_heating_trap_contact(self, betaomega):
         """Compute heating rate at high frequency from trap-averaged contact.
         Heating rate is given as Hz/s, i.e. E/h per second in units of Hz."""
+
+        betaomega_safe = np.where(betaomega == 0, 0.5, betaomega)  # Avoid division by zero
+
         pifactors = 1/(36*pi*(2*pi)**(3/2))
-        Edot_C = 9*pi*(self.T*betaomega)**2/(betaomega)**(3/2) * pifactors * self.Ctrap \
-                    * 2*self.Ns * self.kF * self.lambda_T
+        Edot_C = 9*pi*(self.T*betaomega_safe)**2/(betaomega_safe)**(3/2) * pifactors \
+            * self.Ctrap * 2*self.Ns * self.kF * self.lambda_T
         return Edot_C
     
 
@@ -386,7 +389,7 @@ class TrappedUnitaryGas:
         self.Edot_drude = self.A**2*np.array([self.calc_heating_trap_drude(betaomega) for betaomega in self.betaomegas])
         self.Edot_contact = self.A**2 * np.array([self.calc_heating_trap_contact(betaomega) for betaomega in self.betaomegas])
 
-        self.ns = psd_trap(self.betamu,self.betabaromega)/self.Ns # /self.lambda_T**3
+        # self.ns = psd_trap(self.betamu, self.betabaromega)/self.Ns # /self.lambda_T**3
         
         # these were divided by A**4 for some reason when I first saw this code. Why?
         self.zetaDrude = self.Edot_drude/self.A**2 * (self.lambda_T**2*self.kF**2)/(9*pi*nus**2*2*self.Ns)
