@@ -26,7 +26,7 @@ eosrat = BarycentricRational(eosfit['nodes'],eosfit['values'],eosfit['weights'])
 def eos_ufg(betamu):
     """EOS of unitary gas: phase space density f_n(beta*mu) for both spin components (Zwierlein data)"""
     z = np.exp(betamu)
-    f_n = 2*np.where(betamu<-8,z,eosrat(z)) # approximant is for a single spin component, so multiply by 2
+    f_n = 2*np.where(betamu<-8, z, eosrat(z)) # approximant is for a single spin component, so multiply by 2
     return f_n
 
 
