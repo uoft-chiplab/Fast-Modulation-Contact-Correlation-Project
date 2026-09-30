@@ -138,9 +138,18 @@ avgs_df.loc['202.04', 'ODT Scale'] = 1
 # %%
 dict_list_changing_fields_varied = []
 for scale in scale_list:
-    print(scale)
-    TUG_202p24_varied_scale = TUG(avgs_df.loc['202.24', 'ToTF'], 
-                 avgs_df.loc['202.24', 'EFkHz']*1e3*np.sqrt(scale),
+    # print(scale)
+    TUG_202p24_varied_scale = TUG(
+        # avgs_df.loc['202.24', 'ToTF'], 
+                #  avgs_df.loc['202.24', 'EFkHz']*1e3*np.sqrt(scale),
+                0.5,
+                13*1e3*np.sqrt(scale),
+                 bar_nu_var(scale))
+    TUG_202p04_varied_scale = TUG(
+                       0.55,
+                12.8*1e3*np.sqrt(scale),
+        # avgs_df.loc['202.04', 'ToTF'], 
+        #          avgs_df.loc['202.04', 'EFkHz']*1e3*np.sqrt(scale),
                  bar_nu_var(scale))
     
     dict_list_changing_fields_varied.append({
@@ -157,12 +166,30 @@ for scale in scale_list:
         'ODT Scale': scale,
         'Contact': TUG_202p24_varied_scale.calc_contact()
     }) 
+    dict_list_changing_fields_varied.append({
+        'Field': '202.04',
+        'EF': TUG_202p04_varied_scale.EF,
+        'T': TUG_202p04_varied_scale.T,
+        'ToTF': avgs_df.loc['202.04', 'ToTF'],
+        'density': TUG_202p04_varied_scale.density,
+        'thermal_debrog': TUG_202p04_varied_scale.lambda_T,
+        'trap_den_x_thermal_debrog**3': TUG_202p04_varied_scale.psd_trap/TUG_202p04_varied_scale.Ns,
+        'Ns': TUG_202p04_varied_scale.Ns,
+        'kF': TUG_202p04_varied_scale.kF,
+        'n_peak': TUG_202p04_varied_scale.kF**3*3*np.pi**2 ,
+        'ODT Scale': scale,
+        'Contact': TUG_202p04_varied_scale.calc_contact()
+    })
 
-TUG_202p24 = TUG(avgs_df.loc['202.24', 'ToTF'], 
-                 avgs_df.loc['202.24', 'EFkHz']*1e3,
+TUG_202p24 = TUG(               0.5,
+                13*1e3*np.sqrt(scale),
+    # avgs_df.loc['202.24', 'ToTF'], 
+    #              avgs_df.loc['202.24', 'EFkHz']*1e3,
                  bar_nu_var(avgs_df.loc['202.24', 'ODT Scale']))
-TUG_202p04 = TUG(avgs_df.loc['202.04', 'ToTF'], 
-                 avgs_df.loc['202.04', 'EFkHz']*1e3,
+TUG_202p04 = TUG(               0.55,
+                12.8*1e3*np.sqrt(scale),
+    # avgs_df.loc['202.04', 'ToTF'], 
+    #              avgs_df.loc['202.04', 'EFkHz']*1e3,
                  bar_nu_var(avgs_df.loc['202.04', 'ODT Scale']))
 
 dict_list_changing_fields = []
@@ -198,6 +225,7 @@ dict_list_changing_fields.append({
 })
 
 df_changing_fields = pd.DataFrame(dict_list_changing_fields)
+df_changing_fields_varied = pd.DataFrame(dict_list_changing_fields_varied)
 # %%
 fig, ax = plt.subplots()
 
@@ -207,11 +235,44 @@ ax.set(
     ylabel = r'$\langle n \rangle$'
 )
 
+# ax2 = ax.twinx()
+# ax2.plot(df_changing_fields['Field'], df_changing_fields['EF'], 'o-', ls='')
+# ax2.set(
+#     ylabel = 'EF (Hz)'
+# )
+
+xs = np.linspace(202.04,202.24,50)
+interp = np.interp(xs,df_changing_fields['Field'],df_changing_fields['density'])
+
+# ax.plot(xs,interp, marker='', ls='-')
+#%%
+# Convert Field to numeric
+fig, ax = plt.subplots()
+
+df_changing_fields['Field'] = pd.to_numeric(df_changing_fields['Field'])
+
+# Now sort and interpolate
+df_sorted = df_changing_fields.sort_values('Field')
+
+xs = np.linspace(202.04, 202.24, 50)
+interp = np.interp(xs, df_sorted['Field'].values, df_sorted['density'].values)
+
+ax.plot(df_changing_fields['Field'], df_changing_fields['density'], 'o', markersize=10)
+ax.plot(xs, interp, '-')
+ax.set(xlabel='Magnetic Field (G)', 
+       ylabel=r'$\langle n \rangle$',
+       xticks = [202.04, 202.14, 202.24]
+       )
+
+
 ax2 = ax.twinx()
 ax2.plot(df_changing_fields['Field'], df_changing_fields['EF'], 'o-', ls='')
 ax2.set(
     ylabel = 'EF (Hz)'
 )
+
+def interp_B_density(Bval):
+    return np.interp(Bval, df_sorted['Field'].values, df_sorted['density'].values)
 #%%
 ###theory based on ToTF and EF from 202.24/202.04 data 
 ###i want the number to be the same as in the data so i can compare densities
@@ -242,18 +303,19 @@ fig, ax = plt.subplots(2,2, figsize=(11,8))
 
 ax = ax.flatten()
 
-N_value = df_changing_fields[df_changing_fields['Field'] == '202.24']['Ns'].values[0]
-N_value_202p04 = df_changing_fields[df_changing_fields['Field'] == '202.04']['Ns'].values[0]
+N_value = df_changing_fields[df_changing_fields['Field'] == 202.24]['Ns'].values[0]
+N_value_202p04 = df_changing_fields[df_changing_fields['Field'] == 202.04]['Ns'].values[0]
 
+####<n>
 ax[0].plot(df_theory['scale'], df_theory['density'], 'o', color='cornflowerblue',
         label=f'Theory 202.14, ToTF=0.3, EF=9800Hz, N={df_theory.loc[0, "Ns"]:.0f}'
         )
-ax[0].plot(df_changing_fields[df_changing_fields['Field'] == '202.24']['ODT Scale'], 
-        df_changing_fields[df_changing_fields['Field'] == '202.24']['density'], 
+ax[0].plot(df_changing_fields[df_changing_fields['Field'] == 202.24]['ODT Scale'], 
+        df_changing_fields[df_changing_fields['Field'] == 202.24]['density'], 
         label=f'202.24, ToTF={avgs_df.loc["202.24", "ToTF"]:.2f}, EF={avgs_df.loc["202.24", "EFkHz"]*1e3:.0f}Hz, N={N_value:.1f}'
         )
-ax[0].plot(df_changing_fields[df_changing_fields['Field'] == '202.04']['ODT Scale'], 
-        df_changing_fields[df_changing_fields['Field'] == '202.04']['density'], 
+ax[0].plot(df_changing_fields[df_changing_fields['Field'] == 202.04]['ODT Scale'], 
+        df_changing_fields[df_changing_fields['Field'] == 202.04]['density'], 
         label=f'202.04, ToTF={avgs_df.loc["202.04", "ToTF"]:.2f}, EF={avgs_df.loc["202.04", "EFkHz"]*1e3:.0f}Hz, N={N_value_202p04:.1f}'
         )
 ax[0].set(
@@ -261,14 +323,15 @@ ax[0].set(
     ylabel = r'$\langle n \rangle$'
 )
 
+###contact <C>
 ax[1].plot(df_theory['scale'], df_theory['Contact'], color='cornflowerblue', label=f'202.14, ToTF={ToTF}'
         )
-ax[1].plot(df_changing_fields[df_changing_fields['Field'] == '202.24']['ODT Scale'], 
-        df_changing_fields[df_changing_fields['Field'] == '202.24']['Contact'], 
+ax[1].plot(df_changing_fields[df_changing_fields['Field'] == 202.24]['ODT Scale'], 
+        df_changing_fields[df_changing_fields['Field'] == 202.24]['Contact'], 
         label=f'202.24, ToTF={avgs_df.loc["202.24", "ToTF"]:.2f}, EF={avgs_df.loc["202.24", "EFkHz"]*1e3:.0f}Hz'
         )
-ax[1].plot(df_changing_fields[df_changing_fields['Field'] == '202.04']['ODT Scale'], 
-        df_changing_fields[df_changing_fields['Field'] == '202.04']['Contact'], 
+ax[1].plot(df_changing_fields[df_changing_fields['Field'] == 202.04]['ODT Scale'], 
+        df_changing_fields[df_changing_fields['Field'] == 202.04]['Contact'], 
         label=f'202.04, ToTF={avgs_df.loc["202.04", "ToTF"]:.2f}, EF={avgs_df.loc["202.04", "EFkHz"]*1e3:.0f}Hz'
         )
 ax[1].set(
@@ -277,20 +340,142 @@ ax[1].set(
 )
 ax[0].legend()
 
-ax[2].plot(scale_list, df['density'], color='cornflowerblue', label=f'202.14, ToTF={ToTF}'
+popt2, pcov2 = curve_fit(Linear, scale_list, df['density'])
+xs = np.linspace(min(scale_list), max(scale_list), 100)
+
+ax[2].plot(scale_list, df['density'], color='cornflowerblue', 
+           label=f'N={df.loc[0, "Ns"]:.0f}'
         )
 
 ax[2].set(
     xlabel = 'ODT Scale',
     ylabel = r'$\langle n \rangle$'
 )
+ax[2].legend()
 ax2 = ax[2].twinx()
 ax2.set(
     ylim = [df['EF'].min(), df['EF'].max()],
     ylabel = 'EF'
 )
 
+df_changing_fields_varied['Field'] = pd.to_numeric(df_changing_fields_varied['Field'])
+
+xs = np.linspace(min(df_changing_fields_varied['ODT Scale']), max(df_changing_fields_varied['ODT Scale']), 50)
+
+def interp_202p24(odt):
+    return np.interp(odt, df_changing_fields_varied['ODT Scale'][df_changing_fields_varied['Field'] == 202.24],df_changing_fields_varied['density'][df_changing_fields_varied['Field'] == 202.24])
+def interp_202p04(odt):
+    return np.interp(odt,df_changing_fields_varied['ODT Scale'][df_changing_fields_varied['Field'] == 202.04],df_changing_fields_varied['density'][df_changing_fields_varied['Field'] == 202.04])
+def interp_202p04_inverse(density):
+    return np.interp(density, 
+                     df_changing_fields_varied['density'][df_changing_fields_varied['Field'] == 202.04],
+                     df_changing_fields_varied['ODT Scale'][df_changing_fields_varied['Field'] == 202.04])
+def interp_202p24_inverse(density):
+    return np.interp(density, 
+                     df_changing_fields_varied['density'][df_changing_fields_varied['Field'] == 202.24],
+                     df_changing_fields_varied['ODT Scale'][df_changing_fields_varied['Field'] == 202.24])
+
+ax[3].plot(df_changing_fields_varied['ODT Scale'][df_changing_fields_varied['Field'] == 202.24],df_changing_fields_varied['density'][df_changing_fields_varied['Field'] == 202.24])
+ax[3].plot(df_changing_fields_varied['ODT Scale'][df_changing_fields_varied['Field'] == 202.04],df_changing_fields_varied['density'][df_changing_fields_varied['Field'] == 202.04])
+ax[3].set(
+    xlabel = 'ODT Scale',
+    ylabel = r'$\langle n \rangle$'
+)
+ax[3].plot(xs, interp_202p24(xs), marker='', ls='-', )
+ax[3].plot(xs, interp_202p04(xs), marker='', ls='-', )
+
+ax32 = ax[3].twinx()
+ax32.set(
+    ylim = [df_changing_fields_varied['EF'].min(), df_changing_fields_varied['EF'].max()],
+    ylabel = 'EF'
+)
+
 fig.tight_layout()
+#%%
+from scipy.interpolate import interp2d
+
+# Create 2D interpolator
+odt_values = df_changing_fields_varied['ODT Scale'].values
+field_values = df_changing_fields_varied['Field'].values
+density_values = df_changing_fields_varied['density'].values
+
+# Create interpolator: density = f(ODT, Field)
+density_interp = interp2d(odt_values, field_values, density_values, kind='linear')
+
+# Now for a given density and field, find ODT
+def get_odt_for_density_and_field(target_density, field):
+    """Find ODT scale for a given density at a specific field"""
+    # Generate ODT range to search
+    odt_range = np.linspace(0.5, 1.5, 100)
+    
+    # Get densities for this field across ODT range
+    densities = [density_interp(odt, field)[0] for odt in odt_range]
+    
+    # Interpolate to find ODT for target density
+    return np.interp(target_density, densities, odt_range)
+
+# Usage
+odt_needed = get_odt_for_density_and_field(6e18, 202.15)
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+# Plot original data
+mask_04 = df_changing_fields_varied['Field'] == 202.04
+mask_24 = df_changing_fields_varied['Field'] == 202.24
+
+df_04 = df_changing_fields_varied[mask_04].sort_values('ODT Scale')
+df_24 = df_changing_fields_varied[mask_24].sort_values('ODT Scale')
+
+ax.plot(df_04['ODT Scale'], df_04['density'], 'o-', linewidth=2, label='202.04 G', color='C0')
+ax.plot(df_24['ODT Scale'], df_24['density'], 'o-', linewidth=2, label='202.24 G', color='C1')
+
+# Plot interpolated field lines
+fields_to_plot = np.linspace(202.04, 202.24, 6)  # 6 lines total
+odt_range = np.linspace(0.5, 1.5, 100)
+
+for field in fields_to_plot[1:-1]:  # Skip first and last (already plotted)
+    densities = []
+    for odt in odt_range:
+        density_04 = np.interp(odt, df_04['ODT Scale'].values, df_04['density'].values)
+        density_24 = np.interp(odt, df_24['ODT Scale'].values, df_24['density'].values)
+        density = np.interp(field, [202.04, 202.24], [density_04, density_24])
+        densities.append(density)
+    
+    ax.plot(odt_range, densities, '--', alpha=0.5, label=f'{field:.2f} G')
+
+ax.set_xlabel('ODT Scale')
+ax.set_ylabel('<n>')
+ax.legend()
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+#%%
+###plotting sinusodial <n> vs t 
+###modelling 100 mG osc around 202.14
+osc_B = 1/10*(np.sin(np.linspace(0,4*np.pi,100)))+202.14
+
+density_202p14 = interp_B_density(202.14)
+odt_vals = [get_odt_for_density_and_field(density_202p14, field) for field in osc_B]
+
+fig, ax = plt.subplots(2,1)
+
+ax[0].plot(osc_B, marker='',ls='-')
+ax[0].set(
+    ylabel = 'Field (G)',
+    # xlabel = 'Time'
+)
+
+ax2 = ax[0].twinx()
+ax2.plot(interp_B_density(osc_B), marker='', ls='-'
+         )
+ax2.set(
+    ylabel = r'$\langle n \rangle$'
+)
+
+ax[1].plot(odt_vals, marker='', ls='-')
+ax[1].set(
+    ylabel = 'ODT Scale' 
+    )
 # %%
 fig, ax = plt.subplots()
 
